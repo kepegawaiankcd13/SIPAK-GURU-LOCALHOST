@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 1. GLOBAL SAFETY NET: Default deny everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    // Validate a teacher document shape on create/update
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['name', 'nip', 'currentGolongan', 'targetGolongan'])
+        && data.keys().size() <= 60
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.nip is string && data.nip.size() >= 10 && data.nip.size() <= 30
+        && data.currentGolongan is string && data.currentGolongan.size() <= 20
+        && data.targetGolongan is string && data.targetGolongan.size() <= 20
+        && (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string)
+        && (!('createdBy' in data) || data.createdBy is string);
+    }
+
+    // Validate an evaluation document shape under a teacher
+    function isValidEvaluation(data) {
+      return data.keys().hasAll(['year', 'period', 'rating', 'level', 'coefficient', 'multiplier', 'creditEarned'])
+        && data.keys().size() <= 40
+        && (data.year is int || data.year is number) && data.year >= 1500 && data.year <= 2100
+        && data.period is string && data.period.size() > 0 && data.period.size() <= 100
+        && data.rating is string && data.rating.size() > 0 && data.rating.size() <= 30
+        && data.level is string && data.level.size() > 0 && data.level.size() <= 50
+        && (data.coefficient is number || data.coefficient is int)
+        && (data.multiplier is number || data.multiplier is int)
+        && (data.creditEarned is number || data.creditEarned is int)
+        && (!data.keys().hasAny(['akPendidikan']) || (data.akPendidikan is number || data.akPendidikan is int))
+        && (!data.keys().hasAny(['notes']) || data.notes is string)
+        && (!data.keys().hasAny(['startDate']) || data.startDate is string)
+        && (!data.keys().hasAny(['endDate']) || data.endDate is string)
+        && (!data.keys().hasAny(['isCustomRange']) || (data.isCustomRange == true || data.isCustomRange == false))
+        && (!data.keys().hasAny(['customMonths']) || (data.customMonths is int || data.customMonths is number))
+        && (!('createdAt' in data) || data.createdAt is timestamp || data.createdAt is string)
+        && (!('updatedAt' in data) || data.updatedAt is timestamp || data.updatedAt is string)
+        && (!('createdBy' in data) || data.createdBy is string);
+    }
+
+    // Validate Kop Settings document shape
+    function isValidKopSettings(data) {
+      return data.keys().size() <= 25
+        && (!('logoType' in data) || (data.logoType is string && (data.logoType == 'svg-jabar' || data.logoType == 'url')))
+        && (!('customLogoUrl' in data) || (data.customLogoUrl is string && data.customLogoUrl.size() <= 3000))
+        && (!('row1' in data) || (data.row1 is string && data.row1.size() <= 1000))
+        && (!('row2' in data) || (data.row2 is string && data.row2.size() <= 1000))
+        && (!('row3' in data) || (data.row3 is string && data.row3.size() <= 1000))
+        && (!('row4' in data) || (data.row4 is string && data.row4.size() <= 1000))
+        && (!('row5' in data) || (data.row5 is string && data.row5.size() <= 1000))
+        && (!('row6' in data) || (data.row6 is string && data.row6.size() <= 1000))
+        && (!('tteLogoType' in data) || (data.tteLogoType is string && (data.tteLogoType == 'default' || data.tteLogoType == 'url' || data.tteLogoType == 'upload')))
+        && (!('tteLogoUrl' in data) || (data.tteLogoUrl is string && data.tteLogoUrl.size() <= 3000))
+        && (!('tteLogoBase64' in data) || (data.tteLogoBase64 is string && data.tteLogoBase64.size() <= 1500000))
+        && (!('tteTextHeader' in data) || (data.tteTextHeader is string && data.tteTextHeader.size() <= 2000))
+        && (!('tteTextJabatan1' in data) || (data.tteTextJabatan1 is string && data.tteTextJabatan1.size() <= 2000))
+        && (!('tteTextJabatan2' in data) || (data.tteTextJabatan2 is string && data.tteTextJabatan2.size() <= 2000));
+    }
+
+    // Validate App Users document shape
+    function isValidAppUser(data) {
+      return data.keys().hasAll(['username', 'password', 'school', 'role', 'displayName'])
+        && data.keys().size() <= 15
+        && data.username is string && data.username.size() > 0
+        && data.password is string && data.password.size() > 0
+        && data.school is string
+        && data.role is string && (data.role == 'super_admin' || data.role == 'school_admin')
+        && data.displayName is string;
+    }
+
+    // Validate Schools document shape
+    function isValidSchool(data) {
+      return data.keys().hasAll(['npsn', 'name'])
+        && data.keys().size() <= 15
+        && data.npsn is string && data.npsn.size() >= 4 && data.npsn.size() <= 15
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 250
+        && (!data.keys().hasAny(['address']) || data.address is string)
+        && (!data.keys().hasAny(['city']) || data.city is string)
+        && (!data.keys().hasAny(['principalName']) || data.principalName is string)
+        && (!data.keys().hasAny(['principalNip']) || data.principalNip is string)
+        && (!data.keys().hasAny(['principalStatus']) || (data.principalStatus is string && (data.principalStatus == 'definitif' || data.principalStatus == 'plt' || data.principalStatus == 'plh')));
+    }
+
+    // --- COLLECTION RULES MATCHES ---
+ 
+    // App Users collection
+    match /app_users/{username} {
+      allow get, list: if true;
+      allow delete: if isValidId(username);
+      allow create, update: if isValidId(username) && isValidAppUser(incoming());
+    }
+
+    // Schools collection
+    match /schools/{schoolId} {
+      allow get, list: if true;
+      allow delete: if isValidId(schoolId);
+      allow create, update: if isValidId(schoolId) && isValidSchool(incoming());
+    }
+ 
+    // Teachers collection
+    match /teachers/{teacherId} {
+      allow get, list: if true;
+      allow delete: if isValidId(teacherId);
+      
+      allow create: if isValidId(teacherId) 
+        && isValidTeacher(incoming());
+        
+      allow update: if isValidId(teacherId)
+        && isValidTeacher(incoming());
+ 
+      // Evaluations subcollection (nested)
+      match /evaluations/{evaluationId} {
+        allow get, list: if true;
+        allow delete: if isValidId(evaluationId);
+        
+        allow create: if isValidId(evaluationId)
+          && isValidEvaluation(incoming());
+          
+        allow update: if isValidId(evaluationId)
+          && isValidEvaluation(incoming());
+      }
+    }
+
+    // Settings collection
+    match /settings/{settingsId} {
+      allow get, list: if true;
+      allow delete: if isValidId(settingsId);
+      allow create, update: if isValidId(settingsId) && isValidKopSettings(incoming());
+    }
+
+    // System logs collection for error tracking
+    match /system_logs/{logId} {
+      allow get, list, create, update, delete: if true;
+    }
+
+    // Connectivity test collection
+    match /test/{docId} {
+      allow get, list, create, update, delete: if true;
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix SIPAK-GURU KCD XIII",
+  "description": "Aplikasi berbasis Web untuk mempermudah para Guru/ Jabatan Fungsional Guru dalam membuat Penetapan Angka Kredit",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
