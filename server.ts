@@ -710,7 +710,18 @@ async function startServer() {
   // Serve Vite in development, static files in production
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: [
+            "**/data/**",
+            "**/dist/**",
+            "**/.git/**",
+            "**/*.sql",
+            "**/*.log"
+          ]
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
