@@ -1,5 +1,3 @@
-import { collection, getDocs, doc, setDoc, writeBatch } from "firebase/firestore";
-import type { Firestore } from "firebase/firestore";
 import { toast, swal } from "./toast";
 import type { TeacherProfile, SKPEvaluation } from "../types";
 
@@ -13,140 +11,53 @@ export interface BackupData {
 }
 
 /**
- * Automatically checks browser local storage for any legacy data (from previous offline/prototype sessions)
- * and migrates them safely to the active Firebase Cloud Firestore.
+ * Clean up legacy localStorage caches so they do not conflict with MySQL.
  */
-export async function checkAndMigrateLegacyLocalStorage(db: Firestore): Promise<number> {
-  let migratedCount = 0;
+export async function checkAndMigrateLegacyLocalStorage(): Promise<number> {
   try {
-    // 1. Check legacy teachers
-    const legacyTeachersStr = localStorage.getItem("sipak_teachers") || localStorage.getItem("sipak_teachers_list") || localStorage.getItem("teachers");
-    if (legacyTeachersStr) {
-      try {
-        const teachersList = JSON.parse(legacyTeachersStr);
-        if (Array.isArray(teachersList) && teachersList.length > 0) {
-          for (const teacher of teachersList) {
-            const teacherId = teacher.id || teacher.nip || `teacher_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-            const { evaluations, ...profileData } = teacher;
-            const tDocRef = doc(db, "teachers", teacherId);
-            await setDoc(tDocRef, profileData, { merge: true });
-            migratedCount++;
-
-            // Migrate evaluations if present
-            if (Array.isArray(evaluations) && evaluations.length > 0) {
-              for (let i = 0; i < evaluations.length; i++) {
-                const evalItem = evaluations[i];
-                const evalId = evalItem.id || `eval_${evalItem.year || 2024}_${i}`;
-                const eDocRef = doc(db, "teachers", teacherId, "evaluations", evalId);
-                await setDoc(eDocRef, evalItem, { merge: true });
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Failed parsing legacy teachers from localStorage:", e);
-      }
-    }
-
-    // 2. Check legacy schools
-    const legacySchoolsStr = localStorage.getItem("sipak_schools") || localStorage.getItem("schools");
-    if (legacySchoolsStr) {
-      try {
-        const schoolsList = JSON.parse(legacySchoolsStr);
-        if (Array.isArray(schoolsList) && schoolsList.length > 0) {
-          for (const school of schoolsList) {
-            const schoolId = school.id || school.npsn || `school_${Date.now()}`;
-            const sDocRef = doc(db, "schools", schoolId);
-            await setDoc(sDocRef, school, { merge: true });
-            migratedCount++;
-          }
-        }
-      } catch (e) {
-        console.warn("Failed parsing legacy schools from localStorage:", e);
-      }
-    }
-
-    // 3. Check legacy users
-    const legacyUsersStr = localStorage.getItem("sipak_users") || localStorage.getItem("sipak_app_users") || localStorage.getItem("users");
-    if (legacyUsersStr) {
-      try {
-        const usersList = JSON.parse(legacyUsersStr);
-        if (Array.isArray(usersList) && usersList.length > 0) {
-          for (const u of usersList) {
-            if (u.username) {
-              const uDocRef = doc(db, "app_users", u.username);
-              await setDoc(uDocRef, u, { merge: true });
-              migratedCount++;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Failed parsing legacy users from localStorage:", e);
-      }
-    }
-  } catch (err) {
-    console.warn("Migration scanner error:", err);
-  }
-
-  return migratedCount;
+    // Clear obsolete legacy prototype keys that cause stale data
+    localStorage.removeItem("sipak_teachers");
+    localStorage.removeItem("sipak_teachers_list");
+    localStorage.removeItem("teachers");
+    localStorage.removeItem("sipak_schools");
+    localStorage.removeItem("schools");
+    localStorage.removeItem("sipak_users");
+    localStorage.removeItem("users");
+  } catch (e) {}
+  return 0;
 }
 
 /**
- * Exports complete cloud database to a downloadable JSON file
+ * Exports complete MySQL database to a downloadable JSON file
  */
-export async function exportDatabaseToJSON(db: Firestore, exportedBy: string = "admin"): Promise<void> {
+export async function exportDatabaseToJSON(dbArg?: any, exportedBy: string = "admin"): Promise<void> {
   try {
-    toast.info("Mengumpulkan seluruh data database cloud...");
+    toast.info("Mengumpulkan seluruh data dari database MySQL XAMPP...");
 
-    // 1. Fetch schools
-    const schoolsSnap = await getDocs(collection(db, "schools"));
-    const schools: any[] = [];
-    schoolsSnap.forEach((docSnap) => {
-      schools.push({ id: docSnap.id, ...docSnap.data() });
-    });
-
-    // 2. Fetch app_users
-    const usersSnap = await getDocs(collection(db, "app_users"));
-    const app_users: any[] = [];
-    usersSnap.forEach((docSnap) => {
-      app_users.push({ username: docSnap.id, ...docSnap.data() });
-    });
-
-    // 3. Fetch teachers and subcollections
-    const teachersSnap = await getDocs(collection(db, "teachers"));
-    const teachers: any[] = [];
-    for (const tDoc of teachersSnap.docs) {
-      const teacherData = { id: tDoc.id, ...tDoc.data() } as any;
-      const evalsSnap = await getDocs(collection(db, "teachers", tDoc.id, "evaluations"));
-      const evalsList: any[] = [];
-      evalsSnap.forEach((eDoc) => {
-        evalsList.push({ id: eDoc.id, ...eDoc.data() });
-      });
-      teacherData.evaluations = evalsList;
-      teachers.push(teacherData);
+    const res = await fetch('/api/backup/export');
+    let backupPayload: any;
+    if (res.ok) {
+      backupPayload = await res.json();
+    } else {
+      throw new Error("Gagal mengambil data dari server");
     }
 
-    const backupPayload: BackupData = {
-      version: "2.0-permepan-rb-1-2023",
-      timestamp: new Date().toISOString(),
-      exportedBy,
-      schools,
-      app_users,
-      teachers
-    };
+    const schoolsCount = backupPayload.schools?.length || 0;
+    const usersCount = backupPayload.app_users?.length || 0;
+    const teachersCount = backupPayload.teachers?.length || 0;
 
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
     const dateStamp = new Date().toISOString().slice(0, 10);
-    downloadAnchor.setAttribute("download", `SIPAK_BACKUP_DATA_JABAR_${dateStamp}.json`);
+    downloadAnchor.setAttribute("download", `SIPAK_BACKUP_MYSQL_XAMPP_${dateStamp}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
 
     swal.fire({
       title: "Pencadangan Berhasil!",
-      text: `File cadangan berisi ${schools.length} sekolah, ${app_users.length} akun operator, dan ${teachers.length} guru PNS berhasil diunduh. Simpan berkas JSON ini dengan aman.`,
+      text: `File cadangan berisi ${schoolsCount} sekolah, ${usersCount} akun operator, dan ${teachersCount} guru PNS berhasil diunduh langsung dari database MySQL XAMPP.`,
       icon: "success"
     });
   } catch (err: any) {
@@ -160,64 +71,33 @@ export async function exportDatabaseToJSON(db: Firestore, exportedBy: string = "
 }
 
 /**
- * Restores cloud database from a JSON backup file
+ * Restores MySQL database from a JSON backup file
  */
-export async function importDatabaseFromJSON(db: Firestore, jsonString: string): Promise<boolean> {
+export async function importDatabaseFromJSON(dbArg: any, jsonString: string): Promise<boolean> {
   try {
     const backup: BackupData = JSON.parse(jsonString);
     if (!backup.schools && !backup.teachers && !backup.app_users) {
       throw new Error("Format berkas JSON tidak valid. Pastikan ini adalah file backup resmi SIPAK.");
     }
 
-    let schoolCount = 0;
-    let userCount = 0;
-    let teacherCount = 0;
+    toast.info("Mengimpor data ke database MySQL XAMPP...");
+    const res = await fetch('/api/backup/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backup)
+    });
 
-    // 1. Restore schools
-    if (Array.isArray(backup.schools)) {
-      for (const s of backup.schools) {
-        const sId = s.id || s.npsn;
-        if (sId) {
-          await setDoc(doc(db, "schools", sId), s, { merge: true });
-          schoolCount++;
-        }
-      }
+    if (!res.ok) {
+      throw new Error("Server gagal memproses pemulihan data");
     }
 
-    // 2. Restore app_users
-    if (Array.isArray(backup.app_users)) {
-      for (const u of backup.app_users) {
-        const uId = u.username;
-        if (uId) {
-          await setDoc(doc(db, "app_users", uId), u, { merge: true });
-          userCount++;
-        }
-      }
-    }
-
-    // 3. Restore teachers & evaluations
-    if (Array.isArray(backup.teachers)) {
-      for (const t of backup.teachers) {
-        const tId = t.id || t.nip;
-        if (tId) {
-          const { evaluations, ...profileData } = t;
-          await setDoc(doc(db, "teachers", tId), profileData, { merge: true });
-          teacherCount++;
-
-          if (Array.isArray(evaluations)) {
-            for (let i = 0; i < evaluations.length; i++) {
-              const evalItem = evaluations[i];
-              const evalId = evalItem.id || `eval_${evalItem.year || 2024}_${i}`;
-              await setDoc(doc(db, "teachers", tId, "evaluations", evalId), evalItem, { merge: true });
-            }
-          }
-        }
-      }
-    }
+    const schoolCount = backup.schools?.length || 0;
+    const userCount = backup.app_users?.length || 0;
+    const teacherCount = backup.teachers?.length || 0;
 
     swal.fire({
       title: "Pemulihan Data Berhasil!",
-      text: `Berhasil memulihkan ${schoolCount} data sekolah master, ${userCount} akun operator, dan ${teacherCount} data guru PNS beserta seluruh riwayat penilaian SKP ke Cloud Database Firestore!`,
+      text: `Berhasil memulihkan ${schoolCount} data sekolah master, ${userCount} akun operator, dan ${teacherCount} data guru PNS beserta riwayat SKP ke Database MySQL XAMPP!`,
       icon: "success",
       confirmButtonText: "Selesai"
     });

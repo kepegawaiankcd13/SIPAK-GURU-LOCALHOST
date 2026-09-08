@@ -1,157 +1,155 @@
 # SIPAK-GURU Hub 🎓💼
-> **Sistem Integrasi Penilaian & Angka Kredit Guru PNS**  
+> **Sistem Integrasi Penilaian & Angka Kredit Guru PNS Berbasis Permenpan RB No. 1 Tahun 2023**  
 > *Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat (Ciamis, Banjar, Pangandaran)*
 
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=Vite&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![Firebase](https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)
+![Express](https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL_XAMPP-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 
 ---
 
-## 🌟 Visual Preview
+## 🌟 Visualisasi Dokumen Resmi & Antarmuka Sistem
 
 <div align="center">
-  <img src="./src/assets/images/readme_banner_1782409268625.jpg" alt="SIPAK-GURU Hub Header Banner" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);" />
+  <img src="./src/assets/images/official_gov_document_1788879556454.jpg" alt="Dokumen Resmi Penetapan Angka Kredit (PAK) Guru PNS - Cabang Dinas Pendidikan Wilayah XIII" width="100%" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); border: 1px solid #e2e8f0;" />
+  <p style="margin-top: 8px; font-size: 13px; color: #64748b; font-style: italic;">
+    Dokumen Penetapan Angka Kredit (PAK Konversi) resmi berstandar BKN & Pemerintah Provinsi Jawa Barat, siap cetak dengan Kop Surat Dinas dan spesimen Tanda Tangan Elektronik (TTE).
+  </p>
 </div>
 
 ---
 
 ## 📌 Tentang SIPAK-GURU Hub
 
-**SIPAK-GURU Hub** adalah platform manajemen administrasi kepegawaian modern yang dirancang khusus untuk memfasilitasi proses perhitungan, integrasi, dan rekapitulasi **Angka Kredit (AK)** bagi **Guru PNS** di wilayah kerja **KCD Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat**. 
+**SIPAK-GURU Hub** adalah platform administrasi kepegawaian modern yang dirancang khusus untuk memfasilitasi proses penghitungan, konversi, rekapitulasi, dan pencetakan **Penetapan Angka Kredit (PAK)** bagi **Guru Pegawai Negeri Sipil (PNS)** di lingkungan **Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat** (meliputi Kabupaten Ciamis, Kota Banjar, dan Kabupaten Pangandaran).
 
-Aplikasi ini disesuaikan sepenuhnya dengan regulasi terbaru **PERMENPAN RB Nomor 1 Tahun 2023** tentang Jabatan Fungsional, yang mengalihkan fokus penilaian angka kredit dari butir kegiatan tradisional ke hasil **Konversi Predikat Kinerja Evaluasi SKP (Sasaran Kinerja Pegawai)** tahunan atau periodik secara instan, aman, dan transparan.
+Aplikasi ini disesuaikan sepenuhnya dengan regulasi nasional terbaru:
+1. **PERMENPAN RB Nomor 1 Tahun 2023** tentang Jabatan Fungsional.
+2. **Peraturan BKN Nomor 3 Tahun 2023** mengenai Tata Cara Penyesuaian Angka Kredit dan Konversi Predikat Kinerja SKP.
+3. **Surat Edaran Bersama Mendikbudristek & Kepala BKN** mengenai Konversi Angka Kredit Jabatan Fungsional Guru.
 
----
-
-## 🛠️ Spesifikasi Teknologi (Tech Stack)
-
-Sistem ini dikembangkan menggunakan arsitektur modern berbasis cloud yang ringan, cepat, aman, dan responsif:
-
-*   **Bahasa Pemrograman**: `TypeScript` untuk menjamin keamanan tipe (*type safety*) dan keandalan kode skala besar.
-*   **Framework Frontend**: `React 18+` dengan dukungan compiler super cepat `Vite`.
-*   **Sistem Styling**: `Tailwind CSS` untuk antarmuka presisi tinggi, adaptif (*responsive design*), serta mematuhi rasio kontras aksesibilitas.
-*   **Manajemen Animasi**: `@motion/react` untuk micro-interaction, transisi tab, dan transisi halaman login yang halus.
-*   **Ikonografi**: `Lucide React` untuk visualisasi tombol dan navigasi yang bersih dan seragam.
-*   **Database Engine**: `Firebase Firestore` (NoSQL database terdistribusi di Google Cloud) untuk sinkronisasi data instan.
-*   **Sistem Autentikasi**: `Firebase Authentication` yang membagi akses berdasarkan hak otoritas pengguna (*Role-Based Access Control*).
+Sistem ini mentransformasikan mekanisme lama penghitungan butir kegiatan manual (*DUPAK*) menjadi **Konversi Predikat Kinerja Tahunan/Periodik (E-SKP)** secara otomatis, presisi, transparan, dan terintegrasi dengan basis data **MySQL XAMPP**.
 
 ---
 
-## 👥 Pengguna Sistem (Aktor) & Otoritas
+## 🛠️ Arsitektur & Spesifikasi Teknologi (Tech Stack)
 
-Aplikasi dirancang dengan sistem multi-level user yang terisolasi secara aman:
+Aplikasi dibangun dengan arsitektur **Full-Stack (Client + Server REST API)** yang efisien, mandiri, dan andal:
 
-1.  **Super Admin (Cabang Dinas Pendidikan Wilayah XIII)**
-    *   Melihat rekap data guru PNS secara menyeluruh se-KCD XIII.
-    *   Mengelola, menambah, dan menghapus akun instansi sekolah.
-    *   Mengevaluasi distribusi golongan pegawai.
-2.  **Admin Sekolah / Operator Instansi**
-    *   Mengelola pangkalan data Guru PNS yang aktif di bawah instansinya masing-masing (misal: SMAN 2 Ciamis).
-    *   Mengonfigurasi pengaturan kop surat dinas dan penandatangan dokumen (Kepala Sekolah definitif, Plt, atau Plh) dengan tanda tangan elektronik (TTE).
-    *   Menambahkan, menyunting, dan menghapus log evaluasi E-SKP tahunan/periodik milik guru.
-    *   Menyimpan tautan berkas fisik digital (*Cloud Storage Links*) seperti SK Pangkat, PAK Integrasi 2022, Ijazah, dan dokumen bukti fisik evaluasi.
-
----
-
-## 🚀 Fitur-Fitur Utama
-
-### 1. Pangkalan Guru PNS & Berkas Digital (*Cloud Link Storage*)
-*   Penyimpanan profil lengkap Guru PNS meliputi Nama, NIP, Golongan saat ini, Sekolah, hingga Angka Kredit Penyesuaian/Integrasi tahun 2022.
-*   **Integrasi Tautan Awan**: Setiap profil dilengkapi dengan penyimpanan tautan berkas fisik ke platform cloud storage pilihan Anda (Google Drive, Dropbox, dll.) untuk dokumen **SK Kenaikan Pangkat, PAK Integrasi 2022, Ijazah Terakhir, dan Berkas Pendukung lainnya**.
-
-### 2. Log Evaluasi E-SKP Periodik & Tahunan
-*   Pencatatan riwayat penilaian kinerja (SKP) tahunan atau rentang bulan kustom.
-*   Dilengkapi tautan unggah berkas evaluasi SKP asli dan bukti fisik sertifikat pendukung.
-*   Menghitung perolehan Angka Kredit Konversi secara otomatis berdasarkan jenjang jabatan guru (Ahli Pertama, Ahli Muda, Ahli Madya, Ahli Utama) dan predikat penilaian (Sangat Baik, Baik, Cukup, Kurang, Sangat Kurang).
-
-### 3. Ekspor Dokumen PAK Penyesuaian Resmi
-*   Format laporan otomatis yang mematuhi standar dokumen lampiran BKN.
-*   Menggunakan konfigurasi Kop Surat Resmi Pemerintah Provinsi Jawa Barat, lengkap dengan nomor surat, tempat, tanggal penetapan, serta jabatan penandatangan (Kepala Sekolah / Pejabat Penilai KCD).
-*   Fitur cetak ramah cetak (*print-friendly*), otomatis menyembunyikan elemen UI sistem saat dokumen dicetak ke kertas atau disimpan sebagai PDF.
-
-### 4. Simulasi Kalkulator Angka Kredit Instan
-*   Kalkulator interaktif bagi guru untuk mensimulasikan perolehan Angka Kredit mereka dari kombinasi jenjang golongan, perolehan ijazah baru, predikat kinerja SKP, serta sisa angka kredit dari periode sebelumnya.
-*   Menghasilkan kesimpulan apakah guru tersebut sudah layak (*eligible*) untuk naik pangkat ke golongan berikutnya atau masih memerlukan tambahan angka kredit.
-
-### 5. Repositori Regulasi Kepegawaian BKN
-*   Akses cepat ke berkas panduan penting (Permenpan RB No. 1/2023, Surat Edaran BKN, Tabel Koefisien AK Tahunan) untuk memudahkan pemahaman para aparatur sipil negara di lingkungan dinas.
+*   **Frontend**: `React 18` + `TypeScript` + `Vite` untuk performa render kilat dan *type safety*.
+*   **Styling & UI**: `Tailwind CSS` utility classes, responsif di seluruh resolusi layar, dengan rasio kontras warna standar aksesibilitas WCAG AA.
+*   **Backend Server**: `Express.js` dengan runtime `Node.js` (`server.ts`) yang menyediakan RESTful API terstruktur.
+*   **Database Engine**: **MySQL / MariaDB (XAMPP)**
+    *   Menggunakan skema terstruktur di file `database.sql`.
+    *   Mendukung *auto-bootstrap*: database `sipak_guru_db` dan seluruh tabel otomatis dibuat ketika server terhubung pertama kali.
+    *   *Offline Local Fallback*: Ketika XAMPP belum aktif, sistem tetap dapat beroperasi menggunakan media penyimpanan lokal fallback tanpa hambatan.
+*   **Ekspor Dokumen**: Menggunakan `html2pdf.js`, `jspdf`, dan `html2canvas` untuk menghasilkan dokumen PDF berstandar cetak A4/F4 resmi dinas.
+*   **Ikonografi & Notifikasi**: `Lucide React` untuk ikon antarmuka bersih dan `SweetAlert2` untuk dialog konfirmasi operasional yang aman.
 
 ---
 
-## 🗄️ Skema Database (Firebase Firestore)
+## 👥 Hak Akses & Peran Pengguna (Role-Based Access)
 
-Struktur data didesain secara modular memanfaatkan konsep *subcollections* di Firestore untuk performa tinggi dan efisiensi query:
+Sistem mengadopsi isolasi data multi-tenant demi menjaga privasi dan integritas data guru:
 
-```yaml
-/teachers (Collection)
-  ├── {teacherId} (Document)
-  │     ├── name: string
-  │     ├── nip: string
-  │     ├── school: string
-  │     ├── currentGolongan: string  # Golongan aktif (misal: "III/c")
-  │     ├── akIntegrasi2022: number  # AK Kumulatif Integrasi 2022
-  │     ├── akPendidikan: number     # AK dari Ijazah baru
-  │     ├── skPangkatFileLink: string  # Tautan Cloud SK Pangkat
-  │     ├── pakIntegrasiFileLink: string  # Tautan Cloud PAK Integrasi
-  │     ├── ijazahFileLink: string  # Tautan Cloud Ijazah
-  │     ├── additionalFileLink: string  # Tautan Berkas Pendukung Lain
-  │     │
-  │     └── /evaluations (Subcollection)
-  │           ├── {evaluationId} (Document)
-  │                 ├── title: string       # Tahun/Periode penilaian
-  │                 ├── ratingSKP: string   # Baik, Sangat Baik, dll.
-  │                 ├── creditEarned: number # AK Konversi yang didapat
-  │                 ├── skpFileLink: string  # Tautan Cloud berkas SKP
-  │                 ├── evidenceFileLink: string # Tautan Cloud bukti fisik
-  │                 ├── startDate / endDate: string
-  │                 └── createdAt / updatedAt: timestamp
+| Peran | Otoritas & Lingkup Kerja | Akun Bawaan |
+|---|---|---|
+| **Super Admin** | Akses rekap seluruh sekolah se-KCD Wilayah XIII, manajemen sekolah, audit log sistem, backup/restore database. | `admin` / `adminpaskonversi` |
+| **Admin SMAN 2 Ciamis** | Mengelola data guru dan SKP khusus lingkup SMAN 2 Ciamis, konfigurasi Kop & TTE sekolah. | `sman2ciamis` / `sman2ciamis123` |
+| **Admin SMAN 1 Ciamis** | Mengelola data guru dan SKP khusus lingkup SMAN 1 Ciamis, konfigurasi Kop & TTE sekolah. | `sman1ciamis` / `sman1ciamis123` |
+
+---
+
+## 🚀 Fitur-Fitur Unggulan
+
+### 1. Pangkalan Data Guru PNS & Berkas Digital
+*   Pencatatan profil guru komprehensif: NIP, Karpeg, Pangkat/Golongan ruang aktif, TMT, Unit Kerja, dan Angka Kredit Integrasi 2022.
+*   Tautan dokumen digital awan (Google Drive, Cloud Storage) untuk SK Pangkat terakhir, PAK Integrasi 2022, dan Ijazah peningkatan pendidikan.
+*   Fitur **Impor Data Massal via CSV** untuk registrasi cepat data guru satu sekolah.
+
+### 2. Konversi Predikat SKP ke Angka Kredit (Permenpan RB 1/2023)
+*   Mendukung evaluasi tahunan penuh (12 bulan) maupun periodik bulanan fleksibel.
+*   Perhitungan koefisien otomatis berdasarkan jenjang jabatan guru:
+    *   *Ahli Pertama* (Gol. III/a – III/b): Koefisien 12.5 / tahun
+    *   *Ahli Muda* (Gol. III/c – III/d): Koefisien 25.0 / tahun
+    *   *Ahli Madya* (Gol. IV/a – IV/c): Koefisien 37.5 / tahun
+    *   *Ahli Utama* (Gol. IV/d – IV/e): Koefisien 50.0 / tahun
+*   Pengali persentase predikat kinerja: Sangat Baik (150%), Baik (100%), Butuh Perbaikan (75%), Kurang (50%), Sangat Kurang (25%).
+
+### 3. Ekspor & Cetak Lembar Dokumen Resmi Penetapan Angka Kredit (PAK)
+*   Format cetak dokumen resmi: **Konversi Predikat Kinerja**, **Akumulasi Angka Kredit**, dan **Penetapan Angka Kredit (PAK Konversi)**.
+*   Kustomisasi Kop Surat Resmi (Pemerintah Provinsi Jawa Barat / Satuan Pendidikan) dengan nomor surat dinas, tempat, dan tanggal penetapan.
+*   Integrasi spesimen **Tanda Tangan Elektronik (TTE)** Kepala Sekolah (definitif/Plt/Plh) maupun Kepala Cabang Dinas.
+
+### 4. Simulasi Kalkulator Kenaikan Pangkat
+*   Menghitung proyeksi ketercapaian angka kredit kumulatif menuju jenjang atau pangkat berikutnya.
+*   Indikator status kelayakan kenaikan pangkat secara *real-time* dan rincian kekurangan angka kredit yang harus dipenuhi.
+
+### 5. Manajemen Cadangan & Audit Log
+*   Ekspor dan impor cadangan database utuh dalam format JSON.
+*   Audit log aktivitas pencatatan sistem (pembuatan data guru, penambahan SKP, perubahan profil, dan penghapusan data).
+
+---
+
+## 🗄️ Struktur Tabel Basis Data MySQL (`sipak_guru_db`)
+
+Database dibangun menggunakan skema relasional di file `database.sql`:
+
+```text
+sipak_guru_db
+  ├── schools          # Data satuan pendidikan se-KCD Wilayah XIII (NPSN, Alamat, Kepala Sekolah)
+  ├── app_users        # Data kredensial pengguna, peran, dan asosiasi sekolah
+  ├── teachers         # Data profil guru PNS, jabatan, golongan ruang, dan dasar AK
+  ├── evaluations      # Riwayat evaluasi SKP, predikat, koefisien, dan perolehan AK
+  ├── kop_settings     # Konfigurasi tata letak kop surat, nomor naskah, dan TTE pejabat
+  └── system_logs      # Catatan audit aktivitas operasional dan keamanan sistem
 ```
 
 ---
 
-## 💻 Panduan Instalasi & Pengembangan Lokal
+## 💻 Panduan Menjalankan dengan MySQL XAMPP
 
-Jika Anda ingin menjalankan aplikasi ini di komputer lokal Anda:
+Aplikasi ini dirancang untuk bekerja secara lokal bersama bundel server **XAMPP** di Windows maupun macOS.
 
-### Prasyarat
-*   **Node.js** versi 18 atau yang lebih baru.
-*   **NPM** (biasanya disertakan dalam paket Node.js).
+### 1. Menyiapkan XAMPP
+1. Buka aplikasi **XAMPP Control Panel**.
+2. Nyalakan modul **Apache** dan **MySQL** (pastikan port `3306` aktif dan berstatus *Running*).
+3. Buka peramban dan akses `http://localhost/phpmyadmin`.
 
-### Langkah-langkah
-1.  **Clone Repositori**:
-    ```bash
-    git clone https://github.com/username/sipak-guru-hub.git
-    cd sipak-guru-hub
-    ```
+### 2. Mengimpor Skema Basis Data
+1. Pada phpMyAdmin, buat database baru bernama `sipak_guru_db` (atau biarkan backend membuatnya secara otomatis).
+2. Klik tab **Import**, pilih berkas `database.sql` yang berada di direktori proyek ini, lalu klik **Go**.
+3. Seluruh tabel beserta data inisial instansi sekolah dan akun administrator akan siap digunakan.
 
-2.  **Instalasi Dependensi**:
-    ```bash
-    npm install
-    ```
-
-3.  **Konfigurasi Environment**:
-    Buat file `.env` di direktori root berdasarkan contoh `.env.example`:
-    ```bash
-    cp .env.example .env
-    ```
-    *Catatan: Platform AI Studio mengelola variabel ini secara aman di menu Settings untuk produksi.*
-
-4.  **Jalankan Server Pengembangan**:
-    ```bash
-    npm run dev
-    ```
-    Aplikasi akan berjalan dan dapat diakses di browser melalui alamat `http://localhost:3000`.
-
-5.  **Build untuk Produksi**:
-    ```bash
-    npm run build
-    ```
-    Hasil build statis yang dioptimalkan akan tersimpan di dalam folder `/dist` yang siap dideploy ke server production (seperti Cloud Run, Vercel, Netlify, atau Firebase Hosting).
+### 3. Menjalankan Aplikasi
+1. Buka terminal di folder proyek:
+   ```bash
+   npm install
+   ```
+2. Jalankan server aplikasi:
+   ```bash
+   npm run dev
+   ```
+3. Buka browser pada alamat:
+   ```
+   http://localhost:3000
+   ```
+4. Masuk menggunakan akun administrator yang tersedia:
+   *   **Username**: `admin`
+   *   **Password**: `adminpaskonversi`
 
 ---
 
-## 🏛️ Penyelenggara & Dukungan
-Sistem ini dibuat untuk mendukung akselerasi transformasi digital aparatur sipil negara demi mewujudkan pelayanan pendidikan Jawa Barat yang **Istimewa** (menuju visi *Jawa Barat Istimewa 2026*). Jika Anda mengalami kendala operasional, silakan hubungi operator kepegawaian Cabang Dinas Pendidikan Wilayah XIII Provinsi Jawa Barat.
+## 🏛️ Penyelenggara & Wilayah Kerja
+
+Sistem ini didedikasikan untuk mendukung tata kelola administrasi kepegawaian modern bagi seluruh Guru Pegawai Negeri Sipil di bawah naungan:
+
+**Pemerintah Daerah Provinsi Jawa Barat**  
+**Dinas Pendidikan Provinsi Jawa Barat**  
+**Cabang Dinas Pendidikan Wilayah XIII**  
+*(Wilayah Pelayanan: Kabupaten Ciamis, Kota Banjar, Kabupaten Pangandaran)*  
+
+*Mewujudkan Layanan Kepegawaian Pendidikan Jawa Barat yang Akuntabel, Cepat, dan Istimewa.*

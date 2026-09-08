@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Plus, Trash2, Edit, Building, MapPin, Search, LayoutGrid, List, Filter, Database, RefreshCw, CheckCircle2 } from "lucide-react";
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../firebase";
 import { toast, swal } from "../lib/toast";
 import { 
   saveSchoolToMysql, 
@@ -60,76 +58,37 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
   const [isMysqlConnected, setIsMysqlConnected] = useState<boolean>(false);
   const [isSyncingMysql, setIsSyncingMysql] = useState<boolean>(false);
 
-  // Check MySQL XAMPP status and sync on mount
+  const loadSchoolsFromDb = async () => {
+    setLoading(true);
+    try {
+      const mysqlList = await fetchSchoolsFromMysql();
+      if (mysqlList && mysqlList.length > 0) {
+        const mapped = mysqlList.map((s: any) => ({
+          id: s.id || s.npsn,
+          npsn: s.npsn || s.id,
+          name: s.name || "",
+          address: s.address || "",
+          city: s.city || "",
+          principalName: s.principalName || "",
+          principalNip: s.principalNip || "",
+          principalStatus: s.principalStatus || "definitif"
+        }));
+        mapped.sort((a: School, b: School) => a.name.localeCompare(b.name));
+        setSchools(mapped);
+      }
+    } catch (e) {
+      console.warn("Gagal memuat data sekolah:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Check MySQL XAMPP status and load data on mount
   useEffect(() => {
     checkMysqlConnection().then((status) => {
       setIsMysqlConnected(status.connected);
-      if (status.connected) {
-        fetchSchoolsFromMysql().then((mysqlList) => {
-          if (mysqlList && mysqlList.length > 0) {
-            setSchools((prev) => {
-              const map = new Map<string, School>();
-              prev.forEach((s) => map.set(s.id, s));
-              mysqlList.forEach((s: any) => {
-                const sId = s.id || s.npsn;
-                map.set(sId, {
-                  id: sId,
-                  npsn: s.npsn || sId,
-                  name: s.name || "",
-                  address: s.address || "",
-                  city: s.city || "",
-                  principalName: s.principalName || "",
-                  principalNip: s.principalNip || "",
-                  principalStatus: s.principalStatus || "definitif"
-                });
-              });
-              return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-            });
-            setLoading(false);
-          }
-        });
-      }
     });
-  }, []);
-
-  // Listen to schools collection
-  useEffect(() => {
-    const path = "schools";
-    const unsubscribe = onSnapshot(
-      collection(db, path),
-      (snapshot) => {
-        const list: School[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          list.push({
-            id: docSnap.id,
-            npsn: data.npsn || docSnap.id,
-            name: data.name || "",
-            address: data.address || "",
-            city: data.city || "",
-            principalName: data.principalName || "",
-            principalNip: data.principalNip || "",
-            principalStatus: data.principalStatus || "definitif"
-          });
-        });
-        // Sort alphabetically by school name
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        if (list.length > 0) {
-          setSchools(list);
-        }
-        setLoading(false);
-      },
-      (error) => {
-        console.warn("Firestore listener offline:", error);
-        fetchSchoolsFromMysql().then((mList) => {
-          if (mList && mList.length > 0) {
-            setSchools(mList);
-          }
-          setLoading(false);
-        });
-      }
-    );
-    return () => unsubscribe();
+    loadSchoolsFromDb();
   }, []);
 
   const handleManualSyncToMysql = async () => {
@@ -219,24 +178,9 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
         setIsMysqlConnected(true);
       }
 
-      // 3. SAVE TO CLOUD FIRESTORE
-      let firestoreOk = false;
-      try {
-        await setDoc(doc(db, "schools", schoolId), payload);
-        firestoreOk = true;
-      } catch (dbErr) {
-        console.warn("Firestore setDoc warning (offline):", dbErr);
-      }
-
-      const destinationDesc = mysqlOk && firestoreOk
-        ? "berhasil disimpan di Database MySQL XAMPP (tabel `schools`) & Cloud Firestore!"
-        : mysqlOk
-        ? "berhasil disimpan langsung di Database MySQL XAMPP (tabel `schools`)!"
-        : "berhasil disimpan di database sistem!";
-
       swal.fire({
         title: editingSchool ? "Data Unit Kerja Diperbarui!" : "Sekolah Baru Terdaftar!",
-        text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) ${destinationDesc}`,
+        text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) berhasil disimpan di Database MySQL XAMPP (tabel \`schools\`)!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -287,16 +231,9 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
       // 2. Delete from MySQL XAMPP
       await deleteSchoolFromMysql(pendingDelete.id);
 
-      // 3. Delete from Cloud Firestore
-      try {
-        await deleteDoc(doc(db, "schools", pendingDelete.id));
-      } catch (dbErr) {
-        console.warn("Firestore deleteDoc warning (offline):", dbErr);
-      }
-
       swal.fire({
         title: "Instansi Dihapus!",
-        text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus dari database MySQL XAMPP dan sistem.`,
+        text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus dari database MySQL XAMPP.`,
         icon: "success",
         confirmButtonText: "Selesai"
       });

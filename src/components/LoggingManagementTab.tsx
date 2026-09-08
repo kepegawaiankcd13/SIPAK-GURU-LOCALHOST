@@ -158,7 +158,7 @@ export default function LoggingManagementTab() {
 
     setIsResolving(true);
     try {
-      await resolveLog(selectedLog.id, resolutionNotes || 'Diselesaikan oleh Administrator', !selectedLog.synced);
+      await resolveLog(selectedLog.id, resolutionNotes || 'Diselesaikan oleh Administrator');
       toast.success('Status log berhasil diperbarui menjadi SELESAI.');
       setSelectedLog(null);
       setResolutionNotes('');
@@ -174,7 +174,7 @@ export default function LoggingManagementTab() {
   const handleDeleteLog = async (logId: string, synced: boolean) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus catatan log ini dari basis data?')) {
       try {
-        await deleteLog(logId, !synced);
+        await deleteLog(logId);
         toast.success('Log berhasil dihapus.');
         await loadLogs(true);
         if (selectedLog?.id === logId) {

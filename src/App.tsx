@@ -32,19 +32,6 @@ import {
   Terminal,
   Database
 } from "lucide-react";
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  serverTimestamp,
-  setDoc,
-  getDoc,
-  getDocs
-} from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "./firebase";
 import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings } from "./types";
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from "./data/golonganData";
 import DashboardTab from "./components/DashboardTab";
@@ -66,7 +53,11 @@ import {
   saveEvaluationToMysql, 
   deleteEvaluationFromMysql, 
   saveKopToMysql, 
-  fetchTeachersFromMysql 
+  fetchKopFromMysql,
+  fetchTeachersFromMysql,
+  fetchEvaluationsFromMysql,
+  fetchSchoolsFromMysql,
+  loginWithMysql
 } from "./lib/mysqlSync";
 
 // Helper to safely parse decimal values in Indonesian format (supporting commas)
@@ -287,262 +278,58 @@ export default function App() {
     };
   });
 
-  // Ensure default admin & school operator profiles exist in Firestore (non-blocking in background)
-  const ensureDefaultUsers = () => {
-    try {
-      const defaultAccounts = [
-        {
-          username: "admin",
-          password: "adminpaskonversi",
-          school: "ALL",
-          role: "super_admin" as const,
-          displayName: "Super Admin Dinas Pendidikan"
-        },
-        {
-          username: "sman2ciamis",
-          password: "sman2ciamis123",
-          school: "SMAN 2 CIAMIS",
-          role: "school_admin" as const,
-          displayName: "Admin SMAN 2 Ciamis"
-        },
-        {
-          username: "sman1ciamis",
-          password: "sman1ciamis123",
-          school: "SMAN 1 CIAMIS",
-          role: "school_admin" as const,
-          displayName: "Admin SMAN 1 Ciamis"
-        }
-      ];
-
-      // Sync in background without blocking initial rendering
-      defaultAccounts.forEach((acc) => {
-        const dRef = doc(db, "app_users", acc.username);
-        setDoc(dRef, acc, { merge: true }).catch((e) => {
-          console.warn("Muted credential initialization (offline capability preserved):", e);
-        });
-      });
-
-      // Default master schools for instant unit kerja registration
-      const defaultSchools = [
-        {
-          id: "sman1ciamis",
-          npsn: "20211512",
-          name: "SMAN 1 CIAMIS",
-          city: "Kabupaten Ciamis",
-          address: "Jl. Gunung Galunggung No. 37, Ciamis",
-          principalName: "Drs. H. SUHARA, M.Pd.",
-          principalNip: "196603121992031008",
-          principalStatus: "definitif"
-        },
-        {
-          id: "sman2ciamis",
-          npsn: "20211513",
-          name: "SMAN 2 CIAMIS",
-          city: "Kabupaten Ciamis",
-          address: "Jl. K.H. Ahmad Dahlan No. 2, Ciamis",
-          principalName: "Drs. ENDANG RAHMAT, M.Pd.",
-          principalNip: "196805101994121002",
-          principalStatus: "definitif"
-        },
-        {
-          id: "sman1kawali",
-          npsn: "20211514",
-          name: "SMAN 1 KAWALI",
-          city: "Kabupaten Ciamis",
-          address: "Jl. Poronggol Raya No. 9, Kawali",
-          principalName: "BEBEN HEMARA, S.Pd., M.Pd.",
-          principalNip: "197204151998021004",
-          principalStatus: "definitif"
-        }
-      ];
-
-      defaultSchools.forEach((school) => {
-        const sRef = doc(db, "schools", school.id);
-        setDoc(sRef, school, { merge: true }).catch((e) => {
-          console.warn("Muted schools initialization:", e);
-        });
-      });
-
-      // Auto-seed default sample teacher Antan Kustiawan to ensure immediate data presence
-      const demoTeacherDocRef = doc(db, "teachers", "demo_antan_kustiawan");
-      getDoc(demoTeacherDocRef).then((snap) => {
-        if (!snap.exists()) {
-          const teacherDemo = {
-            name: "ANTAN KUSTIAWAN, S.Pd, M.Pd.",
-            nip: "198606192011011001",
-            school: "SMAN 2 CIAMIS",
-            currentGolongan: "III/c",
-            targetGolongan: "III/d",
-            baseAK: 200.0,
-            akIntegrasi2022: 25.0,
-            akPendidikan: 0,
-            ratingSKP: "Baik",
-            workDurationYears: 3,
-            karpegNumber: "B03023705",
-            birthPlaceDate: "CIAMIS, 19-06-1986",
-            gender: "Laki-Laki",
-            tmtCurrentPangkat: "01-04-2024",
-            tmtCurrentJabatan: "24-08-2023",
-            unitKerja: "SMAN 2 CIAMIS KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII",
-            instansiBiro: "PEMERINTAH PROVINSI JAWA BARAT",
-            nomorSuratKonversi: "1523/KPG.03.03/KCD XIII",
-            nomorSuratAkumulasi: "1524/KPG.03.03/KCD XIII",
-            nomorSuratPenetapan: "1525/KPG.03.03/KCD XIII",
-            tempatDitetapkan: "Bandung",
-            tanggalPenetapan: "02 April 2026",
-            pejabatPenilaiTitle: "KEPALA CABANG PENDIDIKAN WILAYAH XIII",
-            pejabatPenilaiInstansi: "PROVINSI JAWA BARAT",
-            pejabatPenilaiNama: "DWI YANTI ESTRININGRUM, S.Sos., M.Pd.",
-            pejabatPenilaiNip: "19741212 200212 2 003",
-            pejabatPenilaiGolongan: "Pembina Tk.I",
-            pejabatPenilaiStatus: "definitif",
-            createdBy: "admin"
-          };
-
-          setDoc(demoTeacherDocRef, teacherDemo).then(() => {
-            DEFAULT_EVALUATIONS.forEach((evalItem, idx) => {
-              const evalDocRef = doc(db, "teachers", "demo_antan_kustiawan", "evaluations", `eval_${evalItem.year}_${idx}`);
-              setDoc(evalDocRef, {
-                ...evalItem,
-                createdBy: "admin"
-              }).catch(() => {});
-            });
-          }).catch((err) => {
-            console.warn("Auto-seed demo teacher error:", err);
-          });
-        }
-      }).catch(() => {});
-    } catch (e) {
-      console.warn("Muted credential initialization (offline capability preserved):", e);
-    }
-  };
-
   // Load session & configuration on Mount
   useEffect(() => {
-    // Background sync default accounts
-    ensureDefaultUsers();
-    // Auto-check and recover any legacy offline cache into Firestore
-    checkAndMigrateLegacyLocalStorage(db).then((migrated) => {
-      if (migrated > 0) {
-        toast.success(`Berhasil menyinkronkan ${migrated} data dari penyimpanan lokal ke Cloud Firestore!`);
-      }
-    }).catch(() => {});
+    // Auto-check and clean legacy cache
+    checkAndMigrateLegacyLocalStorage().catch(() => {});
     setAuthLoading(false);
   }, []);
 
-  // Load settings from Firestore on Login
+  // Load settings from MySQL on Login
   useEffect(() => {
     if (!user) return;
-
-    const docId = `kop_${user.username}`;
-    const docRef = doc(db, "settings", docId);
-
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setKopSettings(prev => {
-          if (
-            prev.logoType === data.logoType &&
-            prev.customLogoUrl === data.customLogoUrl &&
-            prev.row1 === data.row1 &&
-            prev.row2 === data.row2 &&
-            prev.row3 === data.row3 &&
-            prev.row4 === data.row4 &&
-            prev.row5 === data.row5 &&
-            prev.row6 === data.row6 &&
-            prev.tteLogoType === data.tteLogoType &&
-            prev.tteLogoUrl === data.tteLogoUrl &&
-            prev.tteLogoBase64 === data.tteLogoBase64 &&
-            prev.tteTextHeader === data.tteTextHeader &&
-            prev.tteTextJabatan1 === data.tteTextJabatan1 &&
-            prev.tteTextJabatan2 === data.tteTextJabatan2
-          ) {
-            return prev; // No change
-          }
-          return {
-            logoType: (data.logoType as 'svg-jabar' | 'url') || 'svg-jabar',
-            customLogoUrl: data.customLogoUrl || '',
-            row1: data.row1 || '',
-            row2: data.row2 || '',
-            row3: data.row3 || '',
-            row4: data.row4 || '',
-            row5: data.row5 || '',
-            row6: data.row6 || '',
-            tteLogoType: (data.tteLogoType as 'default' | 'url' | 'upload') || 'default',
-            tteLogoUrl: data.tteLogoUrl || '',
-            tteLogoBase64: data.tteLogoBase64 || '',
-            tteTextHeader: data.tteTextHeader || 'Ditandatangani secara elektronik oleh :',
-            tteTextJabatan1: data.tteTextJabatan1 || '',
-            tteTextJabatan2: data.tteTextJabatan2 || ''
-          };
-        });
+    fetchKopFromMysql().then(data => {
+      if (data) {
+        setKopSettings(prev => ({ ...prev, ...data }));
       }
-    }, (error) => {
-      console.warn("Muted settings fetch on missing document: ", error);
+    }).catch(err => {
+      console.warn("Gagal memuat KOP dari MySQL:", err);
     });
-
-    return () => unsubscribe();
   }, [user]);
 
-  // Save settings to Firestore and LocalStorage
+  // Save settings to MySQL and LocalStorage
   useEffect(() => {
     localStorage.setItem('sipak_kop_settings', JSON.stringify(kopSettings));
-
     if (!user) return;
 
-    const docId = `kop_${user.username}`;
-    const docRef = doc(db, "settings", docId);
-
-    const timer = setTimeout(async () => {
-      try {
-        await setDoc(docRef, {
-          logoType: kopSettings.logoType,
-          customLogoUrl: kopSettings.customLogoUrl || '',
-          row1: kopSettings.row1 || '',
-          row2: kopSettings.row2 || '',
-          row3: kopSettings.row3 || '',
-          row4: kopSettings.row4 || '',
-          row5: kopSettings.row5 || '',
-          row6: kopSettings.row6 || '',
-          tteLogoType: kopSettings.tteLogoType || 'default',
-          tteLogoUrl: kopSettings.tteLogoUrl || '',
-          tteLogoBase64: kopSettings.tteLogoBase64 || '',
-          tteTextHeader: kopSettings.tteTextHeader || 'Ditandatangani secara elektronik oleh :',
-          tteTextJabatan1: kopSettings.tteTextJabatan1 || '',
-          tteTextJabatan2: kopSettings.tteTextJabatan2 || ''
-        });
-        // Sync to MySQL
-        saveKopToMysql(kopSettings).catch(() => {});
-      } catch (err) {
-        console.error("Gagal mencadangkan KOP ke Firestore:", err);
-        saveKopToMysql(kopSettings).catch(() => {});
-      }
+    const timer = setTimeout(() => {
+      saveKopToMysql(kopSettings).catch(err => {
+        console.warn("Gagal mencadangkan KOP ke MySQL:", err);
+      });
     }, 800);
 
     return () => clearTimeout(timer);
   }, [kopSettings, user]);
 
-  // Listen to schools collection in real-time
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "schools"),
-      (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        setSchoolsList(list);
-      },
-      (err) => {
-        console.error("Gagal memuat list sekolah master:", err);
+  // Load schools list from MySQL
+  const loadSchools = async () => {
+    try {
+      const list = await fetchSchoolsFromMysql();
+      if (list && Array.isArray(list)) {
+        const sorted = [...list].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+        setSchoolsList(sorted);
       }
-    );
-    return () => unsubscribe();
-  }, []);
+    } catch (err) {
+      console.warn("Gagal memuat list sekolah master:", err);
+    }
+  };
 
-  // Listen to teachers database collection in real-time
   useEffect(() => {
+    loadSchools();
+  }, [user]);
+
+  // Load teachers list from MySQL
+  const loadTeachers = async () => {
     if (!user) {
       setTeachers([]);
       setLoadingTeachers(false);
@@ -550,121 +337,105 @@ export default function App() {
     }
 
     setLoadingTeachers(true);
-    const unsubscribe = onSnapshot(
-      collection(db, "teachers"),
-      (snapshot) => {
-        const list: (TeacherProfile & { id: string, evaluationsCount?: number })[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const itemSchool = (data.school || "").trim().toUpperCase();
-          const userSchool = (user.school || "").trim().toUpperCase();
-          
-          // Tenant Isolation: If school operator, only show teachers of their school
-          if (user.role === 'school_admin' && itemSchool !== userSchool) {
-            return;
-          }
+    try {
+      const list = await fetchTeachersFromMysql();
+      if (list && Array.isArray(list)) {
+        const userSchool = (user.school || "").trim().toUpperCase();
+        const filtered = user.role === 'school_admin'
+          ? list.filter((item: any) => (item.school || "").trim().toUpperCase() === userSchool)
+          : list;
 
-          list.push({
-            id: docSnap.id,
-            name: data.name || "",
-            nip: data.nip || "",
-            school: data.school || "",
-            currentGolongan: data.currentGolongan || "III/c",
-            targetGolongan: data.targetGolongan || "III/d",
-            baseAK: parseFloatValue(data.baseAK) || 0,
-            akIntegrasi2022: parseFloatValue(data.akIntegrasi2022) || 0,
-            akPendidikan: parseFloatValue(data.akPendidikan) || 0,
-            ratingSKP: data.ratingSKP || "Baik",
-            workDurationYears: parseFloatValue(data.workDurationYears) || 1,
-            karpegNumber: data.karpegNumber || "",
-            birthPlaceDate: data.birthPlaceDate || "",
-            gender: data.gender || "Laki-Laki",
-            tmtCurrentPangkat: data.tmtCurrentPangkat || "",
-            tmtCurrentJabatan: data.tmtCurrentJabatan || "",
-            unitKerja: data.unitKerja || "",
-            instansiBiro: data.instansiBiro || "PEMERINTAH PROVINSI JAWA BARAT",
-            nomorSuratKonversi: data.nomorSuratKonversi || "",
-            nomorSuratAkumulasi: data.nomorSuratAkumulasi || "",
-            nomorSuratPenetapan: data.nomorSuratPenetapan || "",
-            tempatDitetapkan: data.tempatDitetapkan || "Bandung",
-            tanggalPenetapan: data.tanggalPenetapan || "",
-            pejabatPenilaiTitle: data.pejabatPenilaiTitle || "",
-            pejabatPenilaiInstansi: data.pejabatPenilaiInstansi || "PROVINSI JAWA BARAT",
-            pejabatPenilaiNama: data.pejabatPenilaiNama || "",
-            pejabatPenilaiNip: data.pejabatPenilaiNip || "",
-            pejabatPenilaiGolongan: data.pejabatPenilaiGolongan || "",
-            pejabatPenilaiStatus: data.pejabatPenilaiStatus || "definitif",
-            skPangkatFileLink: data.skPangkatFileLink || "",
-            pakIntegrasiFileLink: data.pakIntegrasiFileLink || "",
-            ijazahFileLink: data.ijazahFileLink || "",
-            additionalFileLink: data.additionalFileLink || ""
-          });
-        });
-        setTeachers(list);
-        setLoadingTeachers(false);
-      },
-      (err) => {
-        console.warn("Failed to load teachers from Firestore, falling back to MySQL:", err);
-        fetchTeachersFromMysql().then((mysqlList) => {
-          if (mysqlList && mysqlList.length > 0) {
-            setTeachers(mysqlList);
-          }
-        }).catch(() => {}).finally(() => setLoadingTeachers(false));
+        const mapped = filtered.map((data: any) => ({
+          id: data.id,
+          name: data.name || "",
+          nip: data.nip || "",
+          school: data.school || "",
+          currentGolongan: data.currentGolongan || "III/c",
+          targetGolongan: data.targetGolongan || "III/d",
+          baseAK: parseFloatValue(data.baseAK) || 0,
+          akIntegrasi2022: parseFloatValue(data.akIntegrasi2022) || 0,
+          akPendidikan: parseFloatValue(data.akPendidikan) || 0,
+          ratingSKP: data.ratingSKP || "Baik",
+          workDurationYears: parseFloatValue(data.workDurationYears) || 1,
+          karpegNumber: data.karpegNumber || "",
+          birthPlaceDate: data.birthPlaceDate || "",
+          gender: data.gender || "Laki-Laki",
+          tmtCurrentPangkat: data.tmtCurrentPangkat || "",
+          tmtCurrentJabatan: data.tmtCurrentJabatan || "",
+          unitKerja: data.unitKerja || "",
+          instansiBiro: data.instansiBiro || "PEMERINTAH PROVINSI JAWA BARAT",
+          nomorSuratKonversi: data.nomorSuratKonversi || "",
+          nomorSuratAkumulasi: data.nomorSuratAkumulasi || "",
+          nomorSuratPenetapan: data.nomorSuratPenetapan || "",
+          tempatDitetapkan: data.tempatDitetapkan || "Bandung",
+          tanggalPenetapan: data.tanggalPenetapan || "",
+          pejabatPenilaiTitle: data.pejabatPenilaiTitle || "",
+          pejabatPenilaiInstansi: data.pejabatPenilaiInstansi || "PROVINSI JAWA BARAT",
+          pejabatPenilaiNama: data.pejabatPenilaiNama || "",
+          pejabatPenilaiNip: data.pejabatPenilaiNip || "",
+          pejabatPenilaiGolongan: data.pejabatPenilaiGolongan || "",
+          pejabatPenilaiStatus: data.pejabatPenilaiStatus || "definitif",
+          skPangkatFileLink: data.skPangkatFileLink || "",
+          pakIntegrasiFileLink: data.pakIntegrasiFileLink || "",
+          ijazahFileLink: data.ijazahFileLink || "",
+          additionalFileLink: data.additionalFileLink || ""
+        }));
+        setTeachers(mapped);
       }
-    );
+    } catch (err) {
+      console.warn("Gagal memuat list guru dari MySQL:", err);
+    } finally {
+      setLoadingTeachers(false);
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    loadTeachers();
   }, [user]);
 
-  // Listen to evaluations subcollection for the active selected teacher
+  // Load evaluations for active selected teacher from MySQL
+  const loadEvaluations = async (teacherId: string) => {
+    try {
+      const rows = await fetchEvaluationsFromMysql(teacherId);
+      if (rows && Array.isArray(rows)) {
+        const evalsList: SKPEvaluation[] = rows.map((evalData: any) => ({
+          id: evalData.id,
+          year: Number(evalData.year) || new Date().getFullYear(),
+          period: evalData.period || "Tahunan",
+          rating: evalData.rating || "Baik",
+          level: evalData.level || "Ahli Muda",
+          coefficient: Number(evalData.coefficient) || 0,
+          multiplier: Number(evalData.multiplier) || 0,
+          creditEarned: Number(evalData.creditEarned) || 0,
+          akPendidikan: Number(evalData.akPendidikan) || 0,
+          notes: evalData.notes || "",
+          startDate: evalData.startDate || "",
+          endDate: evalData.endDate || "",
+          isCustomRange: Boolean(evalData.isCustomRange),
+          customMonths: Number(evalData.customMonths) || 12,
+          skpFileLink: evalData.skpFileLink || "",
+          evidenceFileLink: evalData.evidenceFileLink || "",
+          overrideData: evalData.overrideData || undefined
+        }));
+        evalsList.sort((a, b) => (b.year - a.year) || b.period.localeCompare(a.period));
+        setEvaluations(evalsList);
+
+        const sumAK = evalsList.reduce((sum, item) => sum + (item.creditEarned || 0), 0);
+        const sumPend = evalsList.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
+        setTeacherEvalsCache(prev => ({ ...prev, [teacherId]: sumAK }));
+        setTeacherPendCache(prev => ({ ...prev, [teacherId]: sumPend }));
+      }
+    } catch (err) {
+      console.warn("Gagal memuat evaluasi dari MySQL:", err);
+    }
+  };
+
   useEffect(() => {
     if (!selectedTeacherId) {
       setEvaluations([]);
       return;
     }
-
-    const unsubscribe = onSnapshot(
-      collection(db, "teachers", selectedTeacherId, "evaluations"),
-      (snapshot) => {
-        const evalsList: SKPEvaluation[] = [];
-        snapshot.forEach((docSnap) => {
-          const evalData = docSnap.data();
-          evalsList.push({
-            id: docSnap.id,
-            year: Number(evalData.year) || new Date().getFullYear(),
-            period: evalData.period || "Tahunan",
-            rating: evalData.rating || "Baik",
-            level: evalData.level || "Ahli Muda",
-            coefficient: Number(evalData.coefficient) || 0,
-            multiplier: Number(evalData.multiplier) || 0,
-            creditEarned: Number(evalData.creditEarned) || 0,
-            akPendidikan: Number(evalData.akPendidikan) || 0,
-            notes: evalData.notes || "",
-            startDate: evalData.startDate || "",
-            endDate: evalData.endDate || "",
-            isCustomRange: evalData.isCustomRange || false,
-            customMonths: Number(evalData.customMonths) || 12,
-            skpFileLink: evalData.skpFileLink || "",
-            evidenceFileLink: evalData.evidenceFileLink || "",
-            overrideData: evalData.overrideData || undefined
-          });
-        });
-        // Sort newest first
-        evalsList.sort((a, b) => b.year - a.year || b.period.localeCompare(a.period));
-        setEvaluations(evalsList);
-
-        // Update caches reactively
-        const sumAK = evalsList.reduce((sum, item) => sum + (item.creditEarned || 0), 0);
-        const sumPend = evalsList.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
-        setTeacherEvalsCache(prev => ({ ...prev, [selectedTeacherId]: sumAK }));
-        setTeacherPendCache(prev => ({ ...prev, [selectedTeacherId]: sumPend }));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, `teachers/${selectedTeacherId}/evaluations`);
-      }
-    );
-
-    return () => unsubscribe();
+    loadEvaluations(selectedTeacherId);
   }, [selectedTeacherId]);
 
   // Load evaluations sum cache in list/dashboard fungsional view
@@ -672,32 +443,21 @@ export default function App() {
   useEffect(() => {
     if (teachers.length === 0) return;
     
-    const loadCache = async () => {
-      // Async loop to fetch aggregates
-      for (const t of teachers) {
-        t.id && getDocs(collection(db, "teachers", t.id, "evaluations"))
-          .then(snap => {
-            let sumAK = 0;
-            let sumPend = 0;
-            snap.forEach(d => {
-              const val = d.data();
-              sumAK += Number(val.creditEarned) || 0;
-              sumPend += Number(val.akPendidikan) || 0;
-            });
-            setTeacherEvalsCache(prev => {
-              if (prev[t.id] === sumAK) return prev;
-              return { ...prev, [t.id]: sumAK };
-            });
-            setTeacherPendCache(prev => {
-              if (prev[t.id] === sumPend) return prev;
-              return { ...prev, [t.id]: sumPend };
-            });
-          })
-          .catch(e => console.warn("Failed to fetch valuations for teacher " + t.id, e));
-      }
-    };
-    
-    loadCache();
+    teachers.forEach(t => {
+      if (!t.id) return;
+      fetchEvaluationsFromMysql(t.id).then(rows => {
+        if (rows && Array.isArray(rows)) {
+          let sumAK = 0;
+          let sumPend = 0;
+          rows.forEach((val: any) => {
+            sumAK += Number(val.creditEarned) || 0;
+            sumPend += Number(val.akPendidikan) || 0;
+          });
+          setTeacherEvalsCache(prev => ({ ...prev, [t.id]: sumAK }));
+          setTeacherPendCache(prev => ({ ...prev, [t.id]: sumPend }));
+        }
+      }).catch(() => {});
+    });
   }, [teachersIdsKey]);
 
   // Reset pagination page when search or itemsPerPage or filters are modified
@@ -746,33 +506,23 @@ export default function App() {
     ];
 
     try {
-      // 1. Fetch from Firestore app_users collection
-      const docRef = doc(db, "app_users", uName);
+      // 1. Authenticate with MySQL backend
+      const res = await loginWithMysql(uName, pWord);
       let sessionUser: AppUser | null = null;
 
-      try {
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          if (data.password === pWord) {
-            sessionUser = {
-              username: uName,
-              displayName: data.displayName || uName,
-              role: data.role || "school_admin",
-              school: data.school || ""
-            };
-          } else {
-            setLoginError("Kombinasi password yang dimasukkan salah!");
-            setIsLogining(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Firestore query failed, searching local fallback (preserves offline testing):", err);
-      }
-
-      // 2. Offline Fallback Check (if cloud is unreachable or doc not updated yet)
-      if (!sessionUser) {
+      if (res.success && res.user) {
+        sessionUser = {
+          username: res.user.username,
+          displayName: res.user.displayName || res.user.username,
+          role: res.user.role || "school_admin",
+          school: res.user.school || ""
+        };
+      } else if (res.error === "Kombinasi password yang dimasukkan salah!") {
+        setLoginError(res.error);
+        setIsLogining(false);
+        return;
+      } else {
+        // 2. Offline Fallback Check (if offline or database still starting)
         const matchedLocal = defaultAccounts.find(acc => acc.username === uName && acc.password === pWord);
         if (matchedLocal) {
           sessionUser = {
@@ -799,7 +549,7 @@ export default function App() {
         });
       } else {
         if (!loginError) {
-          const errText = "Akun Pengguna tidak ditemukan! Hubungi Super Admin KCD XIII Dinas Pendidikan.";
+          const errText = res.error || "Akun Pengguna tidak ditemukan! Hubungi Super Admin KCD XIII Dinas Pendidikan.";
           setLoginError(errText);
           swal.fire({
             title: "Gagal Masuk!",
@@ -811,7 +561,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      const errText = "Terjadi kesalahan sistem saat menghubungi database cloud!";
+      const errText = "Terjadi kesalahan sistem saat menghubungi database MySQL!";
       setLoginError(errText);
       swal.fire({
         title: "Kesalahan Sistem!",
@@ -875,7 +625,9 @@ export default function App() {
     const principalNip = matchedSchool?.principalNip || "";
 
     try {
-      const data: Omit<TeacherProfile, 'createdBy' | 'createdAt' | 'updatedAt'> = {
+      const teacherId = `teacher_${Date.now()}`;
+      const data = {
+        id: teacherId,
         name: newTeacherForm.name.toUpperCase().trim(),
         nip: newTeacherForm.nip.replace(/\s+/g, ""),
         school: assignedSchool.toUpperCase().trim(),
@@ -884,7 +636,7 @@ export default function App() {
         baseAK: parseFloatValue(newTeacherForm.baseAK),
         akIntegrasi2022: parseFloatValue(newTeacherForm.akIntegrasi2022),
         akPendidikan: 0,
-        ratingSKP: "Baik",
+        ratingSKP: "Baik" as const,
         workDurationYears: 3,
         karpegNumber: newTeacherForm.karpegNumber.toUpperCase().trim(),
         gender: newTeacherForm.gender,
@@ -903,26 +655,17 @@ export default function App() {
         pejabatPenilaiNama: principalName,
         pejabatPenilaiNip: principalNip,
         pejabatPenilaiGolongan: "",
-        pejabatPenilaiStatus: matchedSchool?.principalStatus || "definitif"
+        pejabatPenilaiStatus: matchedSchool?.principalStatus || "definitif",
+        createdBy: user.username
       };
 
-      const docRef = await addDoc(collection(db, "teachers"), {
-        ...data,
-        createdBy: user.username,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      await saveTeacherToMysql(data);
 
-      // Synchronize directly with MySQL XAMPP (teachers table)
-      saveTeacherToMysql({
-        id: docRef.id,
-        ...data,
-        createdBy: user.username
-      }).catch(() => {});
+      setTeachers(prev => [data, ...prev.filter(t => t.id !== teacherId)]);
 
       swal.fire({
         title: "Pendaftaran Sukses!",
-        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database sistem & MySQL XAMPP. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
+        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database MySQL XAMPP. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
         icon: "success",
         confirmButtonText: "Mulai Lengkapi Data"
       });
@@ -942,9 +685,9 @@ export default function App() {
       });
 
       // Instantly open the teacher
-      handleSelectTeacher({ ...data, id: docRef.id });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, "teachers");
+      handleSelectTeacher(data);
+    } catch (err: any) {
+      toast.error("Gagal menambahkan guru: " + (err.message || String(err)));
     }
   };
 
@@ -1134,22 +877,19 @@ export default function App() {
             pejabatPenilaiNama: principalName,
             pejabatPenilaiNip: principalNip,
             pejabatPenilaiGolongan: "",
-            pejabatPenilaiStatus: matchedSchool?.principalStatus || ("definitif" as const)
+            pejabatPenilaiStatus: matchedSchool?.principalStatus || ("definitif" as const),
+            createdBy: user?.username || "admin"
           };
 
-          await addDoc(collection(db, "teachers"), {
-            ...teacherDoc,
-            createdBy: user?.username || "admin",
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-
+          await saveTeacherToMysql(teacherDoc);
           importCount++;
         }
 
+        await loadTeachers();
+
         swal.fire({
           title: "Impor Berhasil!",
-          text: `Berhasil mengimpor ${importCount} data guru.${skippedCount > 0 ? ` (${skippedCount} baris dilewati karena format data tidak valid/kosong)` : ""}`,
+          text: `Berhasil mengimpor ${importCount} data guru ke database MySQL XAMPP.${skippedCount > 0 ? ` (${skippedCount} baris dilewati karena format data tidak valid/kosong)` : ""}`,
           icon: "success",
           confirmButtonText: "Selesai"
         });
@@ -1165,14 +905,16 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // Instantiates the default test educator Antan Kustiawan directly inside Firestore
+  // Instantiates the default test educator Antan Kustiawan directly inside MySQL
   const handleCreateDemoTeacher = async () => {
     if (!user) return;
     try {
       setLoadingTeachers(true);
       const activeSchool = user.role === 'school_admin' ? user.school : "SMAN 2 CIAMIS";
+      const teacherId = "demo_antan_kustiawan";
       
       const teacherDemo = {
+        id: teacherId,
         name: "ANTAN KUSTIAWAN, S.Pd, M.Pd.",
         nip: "198606192011011001",
         school: activeSchool,
@@ -1180,6 +922,7 @@ export default function App() {
         targetGolongan: "III/d" as const,
         baseAK: 200.0,
         akIntegrasi2022: 25.0,
+        akPendidikan: 0,
         ratingSKP: "Baik" as const,
         workDurationYears: 3,
         karpegNumber: "B03023705",
@@ -1199,29 +942,24 @@ export default function App() {
         pejabatPenilaiNama: "DWI YANTI ESTRININGRUM, S.Sos., M.Pd.",
         pejabatPenilaiNip: "19741212 200212 2 003",
         pejabatPenilaiGolongan: "Pembina Tk.I",
-        pejabatPenilaiStatus: "definitif"
+        pejabatPenilaiStatus: "definitif",
+        createdBy: user.username
       };
 
-      const docRef = await addDoc(collection(db, "teachers"), {
-        ...teacherDemo,
-        createdBy: user.username,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      const teacherId = docRef.id;
+      await saveTeacherToMysql(teacherDemo);
 
       // Add evaluation logs for Antan
-      for (const item of DEFAULT_EVALUATIONS) {
-        await addDoc(collection(db, "teachers", teacherId, "evaluations"), {
+      for (let idx = 0; idx < DEFAULT_EVALUATIONS.length; idx++) {
+        const item = DEFAULT_EVALUATIONS[idx];
+        await saveEvaluationToMysql(teacherId, {
           ...item,
-          createdBy: user.username,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          id: `eval_${item.year}_${idx}`,
+          createdBy: user.username
         });
       }
 
-      toast.success("Akun Contoh Guru (Antan Kustiawan, S.Pd, M.Pd.) berhasil diinisialisasi beserta 3 log penilaian SKP!");
+      await loadTeachers();
+      toast.success("Akun Contoh Guru (Antan Kustiawan, S.Pd, M.Pd.) berhasil diinisialisasi ke database MySQL XAMPP!");
     } catch (err) {
       console.error("Creation failed", err);
       toast.error("Gagal melakukan instansiasi akun contoh.");
@@ -1235,21 +973,21 @@ export default function App() {
     setTeacherToDelete({ id, name });
   };
 
-  // Actual Delete Action (bypasses window.confirm sandbox issues)
+  // Actual Delete Action
   const executeDeleteTeacher = async () => {
     if (!teacherToDelete) return;
     const { id, name } = teacherToDelete;
     try {
-      await deleteDoc(doc(db, "teachers", id));
-      deleteTeacherFromMysql(id).catch(() => {});
+      await deleteTeacherFromMysql(id);
+      setTeachers(prev => prev.filter(t => t.id !== id));
       if (selectedTeacherId === id) {
         setSelectedTeacherId(null);
         setProfile(null);
         setEvaluations([]);
       }
-      toast.success(`Data riwayat Guru "${name}" berhasil dihapus secara permanen.`);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `teachers/${id}`);
+      toast.success(`Data riwayat Guru "${name}" berhasil dihapus secara permanen dari database MySQL.`);
+    } catch (err: any) {
+      toast.error("Gagal menghapus data guru: " + (err.message || String(err)));
     } finally {
       setTeacherToDelete(null);
     }
@@ -1277,32 +1015,17 @@ export default function App() {
 
     // Set local state immediately for instant responsive live view and printing
     setProfile(parsedUpdated);
+    setTeachers(prev => prev.map(t => t.id === selectedTeacherId ? { ...t, ...parsedUpdated } : t));
 
     try {
-      // Clean undefined properties and system internal fields to prevent Firestore rule violations
-      const cleanData: any = {};
-      Object.entries(parsedUpdated).forEach(([key, value]) => {
-        if (value !== undefined && key !== 'id' && key !== 'createdAt' && key !== 'createdBy') {
-          cleanData[key] = value;
-        }
-      });
-
-      await updateDoc(doc(db, "teachers", selectedTeacherId), {
-        ...cleanData,
-        updatedAt: serverTimestamp()
-      });
-
-      // Sync updated data to MySQL XAMPP
-      saveTeacherToMysql({
+      await saveTeacherToMysql({
         id: selectedTeacherId,
-        ...parsedUpdated,
-        ...cleanData
-      }).catch(() => {});
-
-      toast.success("Data pegawai berhasil disimpan ke database & MySQL XAMPP.");
-    } catch (err) {
-      console.error("Firestore update failed:", err);
-      handleFirestoreError(err, OperationType.UPDATE, `teachers/${selectedTeacherId}`);
+        ...parsedUpdated
+      });
+      toast.success("Data pegawai berhasil disimpan ke database MySQL XAMPP.");
+    } catch (err: any) {
+      console.error("MySQL update failed:", err);
+      toast.error("Gagal menyimpan ke MySQL: " + (err.message || String(err)));
     }
   };
 
@@ -1310,7 +1033,10 @@ export default function App() {
   const handleAddEvaluation = async (newEval: SKPEvaluation) => {
     if (!selectedTeacherId || !user) return;
     try {
-      const evalDoc = {
+      const evalId = newEval.id || `eval_${newEval.year || 2024}_${Date.now()}`;
+      const evalDoc: SKPEvaluation = {
+        ...newEval,
+        id: evalId,
         year: Number(newEval.year),
         period: newEval.period,
         rating: newEval.rating,
@@ -1322,23 +1048,30 @@ export default function App() {
         notes: newEval.notes || "",
         startDate: newEval.startDate || "",
         endDate: newEval.endDate || "",
-        isCustomRange: newEval.isCustomRange || false,
+        isCustomRange: Boolean(newEval.isCustomRange),
         customMonths: Number(newEval.customMonths) || 12,
         skpFileLink: newEval.skpFileLink || "",
         evidenceFileLink: newEval.evidenceFileLink || "",
-        overrideData: newEval.overrideData || null,
-        createdBy: user.username,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        overrideData: newEval.overrideData || undefined
       };
-      const evalRef = await addDoc(collection(db, "teachers", selectedTeacherId, "evaluations"), evalDoc);
-      // Sync to MySQL
-      saveEvaluationToMysql(selectedTeacherId, {
-        id: evalRef.id,
-        ...evalDoc
-      }).catch(() => {});
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `teachers/${selectedTeacherId}/evaluations`);
+
+      await saveEvaluationToMysql(selectedTeacherId, evalDoc);
+
+      setEvaluations(prev => {
+        const next = [evalDoc, ...prev.filter(e => e.id !== evalId)];
+        next.sort((a, b) => (b.year - a.year) || b.period.localeCompare(a.period));
+        return next;
+      });
+
+      // Update caches
+      const curCredit = Number(evalDoc.creditEarned) || 0;
+      const curPend = Number(evalDoc.akPendidikan) || 0;
+      setTeacherEvalsCache(prev => ({ ...prev, [selectedTeacherId]: (prev[selectedTeacherId] || 0) + curCredit }));
+      setTeacherPendCache(prev => ({ ...prev, [selectedTeacherId]: (prev[selectedTeacherId] || 0) + curPend }));
+
+      toast.success("Penilaian SKP berhasil disimpan ke database MySQL XAMPP.");
+    } catch (err: any) {
+      toast.error("Gagal menambahkan penilaian: " + (err.message || String(err)));
     }
   };
 
@@ -1346,10 +1079,12 @@ export default function App() {
   const handleDeleteEvaluation = async (evaluationId: string) => {
     if (!selectedTeacherId) return;
     try {
-      await deleteDoc(doc(db, "teachers", selectedTeacherId, "evaluations", evaluationId));
-      deleteEvaluationFromMysql(evaluationId).catch(() => {});
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `teachers/${selectedTeacherId}/evaluations/${evaluationId}`);
+      await deleteEvaluationFromMysql(evaluationId);
+      setEvaluations(prev => prev.filter(e => e.id !== evaluationId));
+      loadEvaluations(selectedTeacherId);
+      toast.success("Penilaian SKP berhasil dihapus dari database MySQL.");
+    } catch (err: any) {
+      toast.error("Gagal menghapus penilaian: " + (err.message || String(err)));
     }
   };
 
@@ -1357,8 +1092,8 @@ export default function App() {
   const handleUpdateEvaluation = async (updatedEval: SKPEvaluation) => {
     if (!selectedTeacherId || !user) return;
     try {
-      const evalRef = doc(db, "teachers", selectedTeacherId, "evaluations", updatedEval.id);
-      const evalDoc: any = {
+      const evalDoc: SKPEvaluation = {
+        ...updatedEval,
         year: Number(updatedEval.year),
         period: updatedEval.period,
         rating: updatedEval.rating,
@@ -1370,17 +1105,19 @@ export default function App() {
         notes: updatedEval.notes || "",
         startDate: updatedEval.startDate || "",
         endDate: updatedEval.endDate || "",
-        isCustomRange: updatedEval.isCustomRange || false,
+        isCustomRange: Boolean(updatedEval.isCustomRange),
         customMonths: Number(updatedEval.customMonths) || 12,
         skpFileLink: updatedEval.skpFileLink || "",
         evidenceFileLink: updatedEval.evidenceFileLink || "",
-        overrideData: updatedEval.overrideData || null,
-        updatedAt: serverTimestamp()
+        overrideData: updatedEval.overrideData || undefined
       };
-      await updateDoc(evalRef, evalDoc);
-      toast.success("Data evaluasi SKP dan riwayat PAK berhasil diperbarui.");
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `teachers/${selectedTeacherId}/evaluations/${updatedEval.id}`);
+
+      await saveEvaluationToMysql(selectedTeacherId, evalDoc);
+      setEvaluations(prev => prev.map(e => e.id === evalDoc.id ? evalDoc : e));
+      loadEvaluations(selectedTeacherId);
+      toast.success("Data evaluasi SKP berhasil diperbarui di database MySQL.");
+    } catch (err: any) {
+      toast.error("Gagal memperbarui evaluasi: " + (err.message || String(err)));
     }
   };
 

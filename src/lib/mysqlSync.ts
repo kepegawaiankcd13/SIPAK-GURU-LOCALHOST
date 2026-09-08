@@ -1,6 +1,7 @@
 /**
- * Client-Side MySQL / XAMPP Synchronization Bridge
- * Enables offline and local MySQL database operations in tandem with Firestore.
+ * Client-Side MySQL / XAMPP API Bridge
+ * Direct pure REST communication with Node Express backend and MySQL database.
+ * Completely replaces Firebase Firestore.
  */
 
 export interface DbStatusInfo {
@@ -29,7 +30,7 @@ export async function checkMysqlConnection(forceRefresh = false): Promise<DbStat
       return data;
     }
   } catch (e) {
-    // Backend API unreachable or running standalone client
+    // Backend API unreachable
   }
   return {
     connected: false,
@@ -43,9 +44,21 @@ export async function checkMysqlConnection(forceRefresh = false): Promise<DbStat
   };
 }
 
-/**
- * Saves or updates a school in MySQL XAMPP
- */
+// ============================================================================
+// SCHOOLS
+// ============================================================================
+export async function fetchSchoolsFromMysql(): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mysql/schools');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Gagal mengambil data sekolah dari API:', err);
+  }
+  return [];
+}
+
 export async function saveSchoolToMysql(school: {
   id?: string;
   npsn: string;
@@ -78,9 +91,6 @@ export async function saveSchoolToMysql(school: {
   }
 }
 
-/**
- * Deletes a school from MySQL XAMPP
- */
 export async function deleteSchoolFromMysql(schoolIdOrNpsn: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/mysql/schools/${encodeURIComponent(schoolIdOrNpsn)}`, {
@@ -93,24 +103,21 @@ export async function deleteSchoolFromMysql(schoolIdOrNpsn: string): Promise<boo
   }
 }
 
-/**
- * Fetches schools list directly from MySQL XAMPP
- */
-export async function fetchSchoolsFromMysql(): Promise<any[]> {
+// ============================================================================
+// TEACHERS
+// ============================================================================
+export async function fetchTeachersFromMysql(): Promise<any[]> {
   try {
-    const res = await fetch('/api/mysql/schools');
+    const res = await fetch('/api/mysql/teachers');
     if (res.ok) {
       return await res.json();
     }
   } catch (err) {
-    console.warn('Gagal mengambil data sekolah dari MySQL:', err);
+    console.warn('Gagal mengambil data guru dari API:', err);
   }
   return [];
 }
 
-/**
- * Saves or updates a teacher in MySQL XAMPP
- */
 export async function saveTeacherToMysql(teacher: any): Promise<boolean> {
   try {
     const res = await fetch('/api/mysql/teachers', {
@@ -125,9 +132,6 @@ export async function saveTeacherToMysql(teacher: any): Promise<boolean> {
   }
 }
 
-/**
- * Deletes a teacher from MySQL XAMPP
- */
 export async function deleteTeacherFromMysql(teacherId: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/mysql/teachers/${encodeURIComponent(teacherId)}`, {
@@ -140,24 +144,21 @@ export async function deleteTeacherFromMysql(teacherId: string): Promise<boolean
   }
 }
 
-/**
- * Fetches teachers list from MySQL XAMPP
- */
-export async function fetchTeachersFromMysql(): Promise<any[]> {
+// ============================================================================
+// EVALUATIONS
+// ============================================================================
+export async function fetchEvaluationsFromMysql(teacherId: string): Promise<any[]> {
   try {
-    const res = await fetch('/api/mysql/teachers');
+    const res = await fetch(`/api/mysql/teachers/${encodeURIComponent(teacherId)}/evaluations`);
     if (res.ok) {
       return await res.json();
     }
   } catch (err) {
-    console.warn('Gagal mengambil data guru dari MySQL:', err);
+    console.warn('Gagal mengambil evaluasi guru dari API:', err);
   }
   return [];
 }
 
-/**
- * Saves an evaluation in MySQL XAMPP
- */
 export async function saveEvaluationToMysql(teacherId: string, evaluation: any): Promise<boolean> {
   try {
     const res = await fetch(`/api/mysql/teachers/${encodeURIComponent(teacherId)}/evaluations`, {
@@ -172,9 +173,6 @@ export async function saveEvaluationToMysql(teacherId: string, evaluation: any):
   }
 }
 
-/**
- * Deletes an evaluation from MySQL XAMPP
- */
 export async function deleteEvaluationFromMysql(evalId: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/mysql/evaluations/${encodeURIComponent(evalId)}`, {
@@ -187,9 +185,21 @@ export async function deleteEvaluationFromMysql(evalId: string): Promise<boolean
   }
 }
 
-/**
- * Saves user in MySQL XAMPP
- */
+// ============================================================================
+// APP USERS & AUTHENTICATION
+// ============================================================================
+export async function fetchUsersFromMysql(): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mysql/users');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Gagal mengambil daftar pengguna dari API:', err);
+  }
+  return [];
+}
+
 export async function saveUserToMysql(user: any): Promise<boolean> {
   try {
     const res = await fetch('/api/mysql/users', {
@@ -204,9 +214,6 @@ export async function saveUserToMysql(user: any): Promise<boolean> {
   }
 }
 
-/**
- * Deletes user from MySQL XAMPP
- */
 export async function deleteUserFromMysql(username: string): Promise<boolean> {
   try {
     const res = await fetch(`/api/mysql/users/${encodeURIComponent(username)}`, {
@@ -219,9 +226,38 @@ export async function deleteUserFromMysql(username: string): Promise<boolean> {
   }
 }
 
-/**
- * Saves KOP settings in MySQL XAMPP
- */
+export async function loginWithMysql(username: string, password: string): Promise<{ success: boolean; user?: any; error?: string }> {
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      return { success: true, user: data.user };
+    }
+    return { success: false, error: data.error || 'Login gagal' };
+  } catch (err: any) {
+    return { success: false, error: 'Tidak dapat terhubung ke server backend' };
+  }
+}
+
+// ============================================================================
+// KOP SETTINGS
+// ============================================================================
+export async function fetchKopFromMysql(): Promise<any | null> {
+  try {
+    const res = await fetch('/api/mysql/settings/kop');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Gagal mengambil KOP dari API:', err);
+  }
+  return null;
+}
+
 export async function saveKopToMysql(kopSettings: any): Promise<boolean> {
   try {
     const res = await fetch('/api/mysql/settings/kop', {
@@ -236,9 +272,46 @@ export async function saveKopToMysql(kopSettings: any): Promise<boolean> {
   }
 }
 
-/**
- * Batch synchronizes data into MySQL XAMPP
- */
+// ============================================================================
+// LOGS
+// ============================================================================
+export async function fetchLogsFromMysql(): Promise<any[]> {
+  try {
+    const res = await fetch('/api/mysql/logs');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Gagal mengambil log dari API:', err);
+  }
+  return [];
+}
+
+export async function saveLogToMysql(log: any): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mysql/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(log)
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function clearLogsInMysql(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/mysql/logs', { method: 'DELETE' });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+// ============================================================================
+// BATCH SYNC & EXPORT
+// ============================================================================
 export async function syncBatchToMysql(data: {
   schools?: any[];
   teachers?: any[];

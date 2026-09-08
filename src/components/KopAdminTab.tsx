@@ -914,7 +914,7 @@ export default function KopAdminTab({ kopSettings, setKopSettings }: KopAdminTab
               </div>
               
               <div className="bg-rose-50 text-rose-900 border border-rose-100 rounded-lg p-3 text-[10px] leading-relaxed">
-                <strong>Catatan Sinkronisasi Cloud:</strong> Seluruh berkas spesimen dan logo disimpan secara aman di cloud database Firestore dan didistribusikan ke lembar laporan. Pengaturan ini berlaku secara otomatis untuk seluruh laporan PAK Guru.
+                <strong>Catatan Sinkronisasi Sistem:</strong> Seluruh berkas spesimen dan logo disimpan secara aman di database lokal MySQL XAMPP dan didistribusikan ke lembar laporan. Pengaturan ini berlaku secara otomatis untuk seluruh laporan PAK Guru.
               </div>
             </div>
           </div>

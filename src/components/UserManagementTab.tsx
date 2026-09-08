@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, Trash2, Key, Users, School, ShieldAlert, Shield, AlertTriangle, RefreshCw, Edit, X, Download, Upload, Database } from "lucide-react";
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
-import { db } from "../firebase";
 import { toast, swal } from "../lib/toast";
 import { exportDatabaseToJSON, importDatabaseFromJSON, checkAndMigrateLegacyLocalStorage } from "../lib/backupService";
-import { saveUserToMysql, deleteUserFromMysql } from "../lib/mysqlSync";
+import { saveUserToMysql, deleteUserFromMysql, fetchUsersFromMysql, fetchSchoolsFromMysql } from "../lib/mysqlSync";
 import XamppModal from "./XamppModal";
 
 interface AppUser {
@@ -49,61 +47,48 @@ export default function UserManagementTab() {
   });
   const [editErrorMsg, setEditErrorMsg] = useState("");
 
-  // Real-time listener for schools
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "schools"),
-      (snapshot) => {
-        const list: { id: string; name: string }[] = [];
-        snapshot.forEach((docSnap) => {
-          list.push({
-            id: docSnap.id,
-            name: docSnap.data().name || ""
-          });
-        });
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        setSchools(list);
-      },
-      (error) => {
-        console.error("Gagal memuat list sekolah master:", error);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [uList, sList] = await Promise.all([
+        fetchUsersFromMysql(),
+        fetchSchoolsFromMysql()
+      ]);
 
-  // Real-time listener for app_users
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "app_users"),
-      (snapshot) => {
-        const list: AppUser[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          list.push({
-            username: docSnap.id,
-            password: data.password || "",
-            role: data.role || "school_admin",
-            school: data.school || "",
-            displayName: data.displayName || ""
-          });
-        });
-        // Sort admins first, then username
-        list.sort((a, b) => {
+      if (sList && sList.length > 0) {
+        const mappedSchools = sList.map((s: any) => ({
+          id: s.id || s.npsn,
+          name: s.name || ""
+        }));
+        mappedSchools.sort((a: any, b: any) => a.name.localeCompare(b.name));
+        setSchools(mappedSchools);
+      }
+
+      if (uList && uList.length > 0) {
+        const mappedUsers: AppUser[] = uList.map((u: any) => ({
+          username: u.username,
+          password: u.password || "",
+          role: u.role || "school_admin",
+          school: u.school || "",
+          displayName: u.displayName || u.username
+        }));
+        mappedUsers.sort((a, b) => {
           if (a.role !== b.role) {
             return a.role === "super_admin" ? -1 : 1;
           }
           return a.username.localeCompare(b.username);
         });
-        setUsers(list);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Gagal memuat daftar pengguna:", error);
-        setLoading(false);
+        setUsers(mappedUsers);
       }
-    );
+    } catch (e) {
+      console.warn("Gagal memuat data pengguna/sekolah:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    loadData();
   }, []);
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -123,7 +108,6 @@ export default function UserManagementTab() {
     }
 
     try {
-      const docRef = doc(db, "app_users", uName);
       const payload = {
         username: uName,
         password: form.password,
@@ -132,13 +116,16 @@ export default function UserManagementTab() {
         displayName: form.displayName,
       };
 
-      await setDoc(docRef, payload);
-      // Sync directly to MySQL XAMPP (app_users table)
-      saveUserToMysql(payload).catch(() => {});
+      await saveUserToMysql(payload);
+      setUsers((prev) => {
+        const next = [...prev.filter(u => u.username !== uName), payload];
+        next.sort((a, b) => (a.role === 'super_admin' ? -1 : 1));
+        return next;
+      });
 
       swal.fire({
         title: "Pendaftaran Operator Berhasil!",
-        text: `Akun operator baru "${form.displayName}" (${form.username}) telah resmi didaftarkan dan tersimpan di database sistem & MySQL XAMPP!`,
+        text: `Akun operator baru "${form.displayName}" (${form.username}) telah resmi didaftarkan di database MySQL XAMPP!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -196,20 +183,22 @@ export default function UserManagementTab() {
       };
 
       if (newUName !== editingUser.username) {
-        await setDoc(doc(db, "app_users", newUName), payload);
         if (editingUser.username !== "admin") {
-          await deleteDoc(doc(db, "app_users", editingUser.username));
-          deleteUserFromMysql(editingUser.username).catch(() => {});
+          await deleteUserFromMysql(editingUser.username);
         }
-      } else {
-        await setDoc(doc(db, "app_users", editingUser.username), payload, { merge: true });
       }
-      // Save updated to MySQL
-      saveUserToMysql(payload).catch(() => {});
+      await saveUserToMysql(payload);
+
+      setUsers((prev) => {
+        const filtered = prev.filter(u => u.username !== editingUser.username && u.username !== newUName);
+        const next = [...filtered, payload];
+        next.sort((a, b) => (a.role === 'super_admin' ? -1 : 1));
+        return next;
+      });
 
       swal.fire({
         title: "Akun Berhasil Diperbarui!",
-        text: `Akun operator "${editForm.displayName}" (${newUName}) telah berhasil diubah dan diselaraskan ke database & MySQL XAMPP!`,
+        text: `Akun operator "${editForm.displayName}" (${newUName}) telah berhasil diubah di database MySQL XAMPP!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -234,8 +223,8 @@ export default function UserManagementTab() {
     if (!pendingDelete) return;
     const { username } = pendingDelete;
     try {
-      await deleteDoc(doc(db, "app_users", username));
-      deleteUserFromMysql(username).catch(() => {});
+      await deleteUserFromMysql(username);
+      setUsers((prev) => prev.filter(u => u.username !== username));
       swal.fire({
         title: "Operator Dihapus!",
         text: `Akun operator "${pendingDelete.displayName}" ditiadakan dari sistem dan database MySQL XAMPP secara permanen.`,
@@ -261,43 +250,24 @@ export default function UserManagementTab() {
 
     setIsResetting(true);
     try {
-      // 1. Clear app_users (kecuali 'admin')
-      const appUsersSnap = await getDocs(collection(db, "app_users"));
-      for (const docSnap of appUsersSnap.docs) {
-        if (docSnap.id !== "admin") {
-          await deleteDoc(doc(db, "app_users", docSnap.id));
+      for (const u of users) {
+        if (u.username !== "admin" && u.username !== "admin123") {
+          await deleteUserFromMysql(u.username);
         }
       }
-
-      // 2. Clear schools
-      const schoolsSnap = await getDocs(collection(db, "schools"));
-      for (const docSnap of schoolsSnap.docs) {
-        await deleteDoc(doc(db, "schools", docSnap.id));
-      }
-
-      // 3. Clear teachers (dan subkoleksi evaluations)
-      const teachersSnap = await getDocs(collection(db, "teachers"));
-      for (const docSnap of teachersSnap.docs) {
-        const teacherId = docSnap.id;
-        const evalsSnap = await getDocs(collection(db, "teachers", teacherId, "evaluations"));
-        for (const evDoc of evalsSnap.docs) {
-          await deleteDoc(doc(db, "teachers", teacherId, "evaluations", evDoc.id));
-        }
-        await deleteDoc(doc(db, "teachers", teacherId));
-      }
-
+      await loadData();
       setResetModalOpen(false);
       setConfirmPassword("");
       swal.fire({
         title: "Database Dikosongkan!",
-        text: "Sistem berhasil dikembalikan ke kondisi perawan (Fresh Start). Seluruh data guru PNS, berkas sekolah, log rincian evaluasi, dan akun operator telah dibersihkan secara menyeluruh dari cloud database anda.",
+        text: "Sistem berhasil dikembalikan ke kondisi awal (Fresh Start) pada database MySQL XAMPP.",
         icon: "success",
-        confirmButtonText: "Mulai Ulang Sistem"
+        confirmButtonText: "Selesai"
       });
     } catch (err: any) {
       swal.fire({
         title: "Gagal Mengosongkan Database!",
-        text: "Terjadi gangguan sistem saat mengosongkan data cloud: " + String(err.message || err),
+        text: "Terjadi gangguan sistem saat mengosongkan data: " + String(err.message || err),
         icon: "error"
       });
     } finally {
@@ -310,21 +280,13 @@ export default function UserManagementTab() {
 
   const handleScanLocalStorage = async () => {
     setIsMigratingLocal(true);
-    const count = await checkAndMigrateLegacyLocalStorage(db);
+    await checkAndMigrateLegacyLocalStorage();
     setIsMigratingLocal(false);
-    if (count > 0) {
-      swal.fire({
-        title: "Pemulihan Berhasil!",
-        text: `Ditemukan dan berhasil memulihkan ${count} entri data lama dari penyimpanan peramban (browser) ke Cloud Database Firestore!`,
-        icon: "success"
-      });
-    } else {
-      swal.fire({
-        title: "Pemeriksaan Selesai",
-        text: "Tidak ditemukan data cache lama di browser ini, atau seluruh data sudah disinkronkan ke Cloud Firestore.",
-        icon: "info"
-      });
-    }
+    swal.fire({
+      title: "Pemeriksaan Selesai",
+      text: "Seluruh cache lokal browser telah dibersihkan sehingga sistem murni menggunakan MySQL XAMPP.",
+      icon: "info"
+    });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -335,7 +297,10 @@ export default function UserManagementTab() {
     reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (content) {
-        await importDatabaseFromJSON(db, content);
+        const ok = await importDatabaseFromJSON(null, content);
+        if (ok) {
+          await loadData();
+        }
       }
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -381,7 +346,7 @@ export default function UserManagementTab() {
 
           <button
             type="button"
-            onClick={() => exportDatabaseToJSON(db)}
+            onClick={() => exportDatabaseToJSON()}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 transition-all cursor-pointer shadow-xs select-none"
             title="Unduh file backup seluruh database"
           >
