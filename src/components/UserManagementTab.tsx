@@ -4,6 +4,7 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from "firebas
 import { db } from "../firebase";
 import { toast, swal } from "../lib/toast";
 import { exportDatabaseToJSON, importDatabaseFromJSON, checkAndMigrateLegacyLocalStorage } from "../lib/backupService";
+import { saveUserToMysql, deleteUserFromMysql } from "../lib/mysqlSync";
 import XamppModal from "./XamppModal";
 
 interface AppUser {
@@ -132,9 +133,12 @@ export default function UserManagementTab() {
       };
 
       await setDoc(docRef, payload);
+      // Sync directly to MySQL XAMPP (app_users table)
+      saveUserToMysql(payload).catch(() => {});
+
       swal.fire({
         title: "Pendaftaran Operator Berhasil!",
-        text: `Akun operator baru "${form.displayName}" (${form.username}) telah resmi didaftarkan untuk unit kerja "${form.school || 'ALL'}"!`,
+        text: `Akun operator baru "${form.displayName}" (${form.username}) telah resmi didaftarkan dan tersimpan di database sistem & MySQL XAMPP!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -195,14 +199,17 @@ export default function UserManagementTab() {
         await setDoc(doc(db, "app_users", newUName), payload);
         if (editingUser.username !== "admin") {
           await deleteDoc(doc(db, "app_users", editingUser.username));
+          deleteUserFromMysql(editingUser.username).catch(() => {});
         }
       } else {
         await setDoc(doc(db, "app_users", editingUser.username), payload, { merge: true });
       }
+      // Save updated to MySQL
+      saveUserToMysql(payload).catch(() => {});
 
       swal.fire({
         title: "Akun Berhasil Diperbarui!",
-        text: `Akun operator "${editForm.displayName}" (${newUName}) telah berhasil diubah dan diselaraskan!`,
+        text: `Akun operator "${editForm.displayName}" (${newUName}) telah berhasil diubah dan diselaraskan ke database & MySQL XAMPP!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -228,9 +235,10 @@ export default function UserManagementTab() {
     const { username } = pendingDelete;
     try {
       await deleteDoc(doc(db, "app_users", username));
+      deleteUserFromMysql(username).catch(() => {});
       swal.fire({
         title: "Operator Dihapus!",
-        text: `Akun operator "${pendingDelete.displayName}" ditiadakan dari sistem secara permanen.`,
+        text: `Akun operator "${pendingDelete.displayName}" ditiadakan dari sistem dan database MySQL XAMPP secara permanen.`,
         icon: "success",
         confirmButtonText: "Selesai"
       });

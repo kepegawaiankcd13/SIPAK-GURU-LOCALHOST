@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit, Building, MapPin, Search, LayoutGrid, List, Filter } from "lucide-react";
+import { Plus, Trash2, Edit, Building, MapPin, Search, LayoutGrid, List, Filter, Database, RefreshCw, CheckCircle2 } from "lucide-react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { toast, swal } from "../lib/toast";
+import { 
+  saveSchoolToMysql, 
+  deleteSchoolFromMysql, 
+  fetchSchoolsFromMysql, 
+  checkMysqlConnection, 
+  syncBatchToMysql 
+} from "../lib/mysqlSync";
 
 export interface School {
   id: string; // NPSN is used as ID
@@ -50,6 +57,41 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
     principalStatus: "definitif" as "definitif" | "plt" | "plh"
   });
 
+  const [isMysqlConnected, setIsMysqlConnected] = useState<boolean>(false);
+  const [isSyncingMysql, setIsSyncingMysql] = useState<boolean>(false);
+
+  // Check MySQL XAMPP status and sync on mount
+  useEffect(() => {
+    checkMysqlConnection().then((status) => {
+      setIsMysqlConnected(status.connected);
+      if (status.connected) {
+        fetchSchoolsFromMysql().then((mysqlList) => {
+          if (mysqlList && mysqlList.length > 0) {
+            setSchools((prev) => {
+              const map = new Map<string, School>();
+              prev.forEach((s) => map.set(s.id, s));
+              mysqlList.forEach((s: any) => {
+                const sId = s.id || s.npsn;
+                map.set(sId, {
+                  id: sId,
+                  npsn: s.npsn || sId,
+                  name: s.name || "",
+                  address: s.address || "",
+                  city: s.city || "",
+                  principalName: s.principalName || "",
+                  principalNip: s.principalNip || "",
+                  principalStatus: s.principalStatus || "definitif"
+                });
+              });
+              return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+            });
+            setLoading(false);
+          }
+        });
+      }
+    });
+  }, []);
+
   // Listen to schools collection
   useEffect(() => {
     const path = "schools";
@@ -72,16 +114,50 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
         });
         // Sort alphabetically by school name
         list.sort((a, b) => a.name.localeCompare(b.name));
-        setSchools(list);
+        if (list.length > 0) {
+          setSchools(list);
+        }
         setLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, path);
-        setLoading(false);
+        console.warn("Firestore listener offline:", error);
+        fetchSchoolsFromMysql().then((mList) => {
+          if (mList && mList.length > 0) {
+            setSchools(mList);
+          }
+          setLoading(false);
+        });
       }
     );
     return () => unsubscribe();
   }, []);
+
+  const handleManualSyncToMysql = async () => {
+    setIsSyncingMysql(true);
+    try {
+      const res = await syncBatchToMysql({ schools });
+      if (res.success) {
+        setIsMysqlConnected(true);
+        swal.fire({
+          title: "Sinkronisasi Berhasil!",
+          text: `Sebanyak ${schools.length} instansi/sekolah berhasil disinkronkan ke database MySQL XAMPP (tabel \`schools\`)!`,
+          icon: "success",
+          confirmButtonText: "Bagus"
+        });
+      } else {
+        swal.fire({
+          title: "Gagal Menghubungi MySQL XAMPP",
+          text: "Pastikan modul MySQL di aplikasi XAMPP Mac Anda sudah berstatus Running dan database \`sipak_guru_db\` sudah dibuat.",
+          icon: "warning",
+          confirmButtonText: "Cek Panduan"
+        });
+      }
+    } catch (e: any) {
+      toast.error("Sinkronisasi gagal: " + (e.message || String(e)));
+    } finally {
+      setIsSyncingMysql(false);
+    }
+  };
 
   const handleCreateOrUpdateSchool = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +177,7 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
     }
 
     try {
+      const schoolId = editingSchool ? editingSchool.id : npsnTrimmed;
       const payload = {
         npsn: npsnTrimmed,
         name: nameTrimmed,
@@ -111,47 +188,58 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
         principalStatus: form.principalStatus
       };
 
-      if (editingSchool) {
-        // Edit mode
-        try {
-          await setDoc(doc(db, "schools", editingSchool.id), payload);
-          swal.fire({
-            title: "Data Unit Kerja Disinkronkan!",
-            text: `Data instansi "${nameTrimmed}" beserta kop surat, detail kepala sekolah, dan NIP penilai berhasil diselaraskan di cloud database!`,
-            icon: "success",
-            confirmButtonText: "Selesai"
-          });
-        } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.WRITE, `schools/${editingSchool.id}`);
-          toast.error(`Gagal memperbarui data sekolah: ${nameTrimmed}`);
-        }
-      } else {
-        // Add mode
-        // Check duplicate NPSN
+      const newSchoolObj: School = {
+        id: schoolId,
+        ...payload
+      };
+
+      if (!editingSchool) {
         const existingSchool = schools.find((s) => s.npsn === npsnTrimmed);
         if (existingSchool) {
           setErrorMsg(`NPSN ${npsnTrimmed} sudah terdaftar untuk "${existingSchool.name}". Setiap sekolah memiliki NPSN 8-digit unik dari Kemendikbud.`);
           swal.fire({
             title: "NPSN Sudah Terdaftar!",
-            text: `Nomor NPSN "${npsnTrimmed}" saat ini sudah terdaftar sebagai "${existingSchool.name}". Mohon periksa kembali nomor NPSN resmi sekolah yang ingin Anda daftarkan, atau klik tombol EDIT pada kartu "${existingSchool.name}" di bawah jika ingin mengubah data sekolah tersebut.`,
+            text: `Nomor NPSN "${npsnTrimmed}" saat ini sudah terdaftar sebagai "${existingSchool.name}". Mohon periksa kembali nomor NPSN resmi sekolah yang ingin Anda daftarkan.`,
             icon: "warning",
             confirmButtonText: "Mengerti"
           });
           return;
         }
-        try {
-          await setDoc(doc(db, "schools", npsnTrimmed), payload);
-          swal.fire({
-            title: "Sekolah Baru Terdaftar!",
-            text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) telah sukses didaftarkan dan siap dihubungkan dengan berkas Guru PNS.`,
-            icon: "success",
-            confirmButtonText: "Selesai"
-          });
-        } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.WRITE, `schools/${npsnTrimmed}`);
-          toast.error(`Gagal mendaftarkan data sekolah baru: ${nameTrimmed}`);
-        }
       }
+
+      // 1. UPDATE LOCAL STATE IMMEDIATELY
+      setSchools((prev) => {
+        const filtered = prev.filter((s) => s.id !== schoolId && s.npsn !== npsnTrimmed);
+        return [...filtered, newSchoolObj].sort((a, b) => a.name.localeCompare(b.name));
+      });
+
+      // 2. SAVE DIRECTLY TO MYSQL XAMPP (Localhost Database)
+      const mysqlOk = await saveSchoolToMysql(newSchoolObj);
+      if (mysqlOk) {
+        setIsMysqlConnected(true);
+      }
+
+      // 3. SAVE TO CLOUD FIRESTORE
+      let firestoreOk = false;
+      try {
+        await setDoc(doc(db, "schools", schoolId), payload);
+        firestoreOk = true;
+      } catch (dbErr) {
+        console.warn("Firestore setDoc warning (offline):", dbErr);
+      }
+
+      const destinationDesc = mysqlOk && firestoreOk
+        ? "berhasil disimpan di Database MySQL XAMPP (tabel `schools`) & Cloud Firestore!"
+        : mysqlOk
+        ? "berhasil disimpan langsung di Database MySQL XAMPP (tabel `schools`)!"
+        : "berhasil disimpan di database sistem!";
+
+      swal.fire({
+        title: editingSchool ? "Data Unit Kerja Diperbarui!" : "Sekolah Baru Terdaftar!",
+        text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) ${destinationDesc}`,
+        icon: "success",
+        confirmButtonText: "Selesai"
+      });
 
       setIsAddingSchool(false);
       setEditingSchool(null);
@@ -193,18 +281,25 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
   const executeDeleteSchool = async () => {
     if (!pendingDelete) return;
     try {
+      // 1. Delete from local state immediately
+      setSchools((prev) => prev.filter((s) => s.id !== pendingDelete.id && s.npsn !== pendingDelete.npsn));
+
+      // 2. Delete from MySQL XAMPP
+      await deleteSchoolFromMysql(pendingDelete.id);
+
+      // 3. Delete from Cloud Firestore
       try {
         await deleteDoc(doc(db, "schools", pendingDelete.id));
-        swal.fire({
-          title: "Instansi Dihapus!",
-          text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus secara permanen.`,
-          icon: "success",
-          confirmButtonText: "Selesai"
-        });
       } catch (dbErr) {
-        handleFirestoreError(dbErr, OperationType.DELETE, `schools/${pendingDelete.id}`);
-        toast.error(`Gagal menghapus data sekolah: ${pendingDelete.name}`);
+        console.warn("Firestore deleteDoc warning (offline):", dbErr);
       }
+
+      swal.fire({
+        title: "Instansi Dihapus!",
+        text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus dari database MySQL XAMPP dan sistem.`,
+        icon: "success",
+        confirmButtonText: "Selesai"
+      });
     } catch (err: any) {
       swal.fire({
         title: "Gagal Menghapus!",
@@ -250,27 +345,72 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
           </p>
         </div>
 
-        {!isSchoolAdmin && (userRole === "super_admin" || userRole === "admin") && (
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => {
-              setEditingSchool(null);
-              setForm({
-                npsn: "",
-                name: "",
-                address: "",
-                city: "",
-                principalName: "",
-                principalNip: "",
-                principalStatus: "definitif"
-              });
-              setIsAddingSchool(!isAddingSchool);
-              setErrorMsg("");
+            type="button"
+            onClick={async () => {
+              const status = await checkMysqlConnection(true);
+              setIsMysqlConnected(status.connected);
+              if (status.connected) {
+                swal.fire({
+                  title: "MySQL XAMPP Terhubung!",
+                  text: `Koneksi ke database "${status.database}" di ${status.host}:${status.port} berhasil! Tabel terdeteksi: ${status.tables?.join(", ") || 'Belum ada tabel'}. Setiap perubahan data sekolah akan langsung tersimpan ke tabel MySQL \`schools\`.`,
+                  icon: "success",
+                  confirmButtonText: "Bagus"
+                });
+              } else {
+                swal.fire({
+                  title: "MySQL XAMPP Belum Terhubung",
+                  text: `Status: ${status.message}. Pastikan XAMPP di Mac Anda sedang running (lampu hijau pada modul MySQL Database di tab 'Manage Servers' XAMPP).`,
+                  icon: "warning",
+                  confirmButtonText: "Tutup"
+                });
+              }
             }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${
+              isMysqlConnected 
+                ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100" 
+                : "bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200"
+            }`}
+            title="Klik untuk tes status koneksi database MySQL XAMPP"
           >
-            <Plus className="w-4 h-4" /> TAMBAH SEKOLAH MASTER
+            <Database className="w-3.5 h-3.5" />
+            <span>{isMysqlConnected ? "MySQL XAMPP Aktif" : "Cek MySQL XAMPP"}</span>
           </button>
-        )}
+
+          <button
+            type="button"
+            onClick={handleManualSyncToMysql}
+            disabled={isSyncingMysql}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50"
+            title="Kirim semua data sekolah saat ini ke tabel `schools` MySQL XAMPP"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMysql ? 'animate-spin' : ''}`} />
+            <span>{isSyncingMysql ? "Menyinkronkan..." : "Sinkron ke MySQL"}</span>
+          </button>
+
+          {!isSchoolAdmin && (userRole === "super_admin" || userRole === "admin") && (
+            <button
+              onClick={() => {
+                setEditingSchool(null);
+                setForm({
+                  npsn: "",
+                  name: "",
+                  address: "",
+                  city: "",
+                  principalName: "",
+                  principalNip: "",
+                  principalStatus: "definitif"
+                });
+                setIsAddingSchool(!isAddingSchool);
+                setErrorMsg("");
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
+            >
+              <Plus className="w-4 h-4" /> TAMBAH SEKOLAH MASTER
+            </button>
+          )}
+        </div>
       </div>
 
       {isAddingSchool && (

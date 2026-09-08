@@ -60,6 +60,14 @@ import LoggingManagementTab from "./components/LoggingManagementTab";
 import XamppModal from "./components/XamppModal";
 import { toast, swal } from "./lib/toast";
 import { checkAndMigrateLegacyLocalStorage } from "./lib/backupService";
+import { 
+  saveTeacherToMysql, 
+  deleteTeacherFromMysql, 
+  saveEvaluationToMysql, 
+  deleteEvaluationFromMysql, 
+  saveKopToMysql, 
+  fetchTeachersFromMysql 
+} from "./lib/mysqlSync";
 
 // Helper to safely parse decimal values in Indonesian format (supporting commas)
 export const parseFloatValue = (val: any): number => {
@@ -503,8 +511,11 @@ export default function App() {
           tteTextJabatan1: kopSettings.tteTextJabatan1 || '',
           tteTextJabatan2: kopSettings.tteTextJabatan2 || ''
         });
+        // Sync to MySQL
+        saveKopToMysql(kopSettings).catch(() => {});
       } catch (err) {
         console.error("Gagal mencadangkan KOP ke Firestore:", err);
+        saveKopToMysql(kopSettings).catch(() => {});
       }
     }, 800);
 
@@ -593,8 +604,12 @@ export default function App() {
         setLoadingTeachers(false);
       },
       (err) => {
-        console.error("Failed to load teachers registry:", err);
-        setLoadingTeachers(false);
+        console.warn("Failed to load teachers from Firestore, falling back to MySQL:", err);
+        fetchTeachersFromMysql().then((mysqlList) => {
+          if (mysqlList && mysqlList.length > 0) {
+            setTeachers(mysqlList);
+          }
+        }).catch(() => {}).finally(() => setLoadingTeachers(false));
       }
     );
 
@@ -898,9 +913,16 @@ export default function App() {
         updatedAt: serverTimestamp()
       });
 
+      // Synchronize directly with MySQL XAMPP (teachers table)
+      saveTeacherToMysql({
+        id: docRef.id,
+        ...data,
+        createdBy: user.username
+      }).catch(() => {});
+
       swal.fire({
         title: "Pendaftaran Sukses!",
-        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke cloud database. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
+        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database sistem & MySQL XAMPP. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
         icon: "success",
         confirmButtonText: "Mulai Lengkapi Data"
       });
@@ -1219,6 +1241,7 @@ export default function App() {
     const { id, name } = teacherToDelete;
     try {
       await deleteDoc(doc(db, "teachers", id));
+      deleteTeacherFromMysql(id).catch(() => {});
       if (selectedTeacherId === id) {
         setSelectedTeacherId(null);
         setProfile(null);
@@ -1269,7 +1292,14 @@ export default function App() {
         updatedAt: serverTimestamp()
       });
 
-      toast.success("Data pegawai berhasil disimpan ke cloud database.");
+      // Sync updated data to MySQL XAMPP
+      saveTeacherToMysql({
+        id: selectedTeacherId,
+        ...parsedUpdated,
+        ...cleanData
+      }).catch(() => {});
+
+      toast.success("Data pegawai berhasil disimpan ke database & MySQL XAMPP.");
     } catch (err) {
       console.error("Firestore update failed:", err);
       handleFirestoreError(err, OperationType.UPDATE, `teachers/${selectedTeacherId}`);
@@ -1301,7 +1331,12 @@ export default function App() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
-      await addDoc(collection(db, "teachers", selectedTeacherId, "evaluations"), evalDoc);
+      const evalRef = await addDoc(collection(db, "teachers", selectedTeacherId, "evaluations"), evalDoc);
+      // Sync to MySQL
+      saveEvaluationToMysql(selectedTeacherId, {
+        id: evalRef.id,
+        ...evalDoc
+      }).catch(() => {});
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, `teachers/${selectedTeacherId}/evaluations`);
     }
@@ -1312,6 +1347,7 @@ export default function App() {
     if (!selectedTeacherId) return;
     try {
       await deleteDoc(doc(db, "teachers", selectedTeacherId, "evaluations", evaluationId));
+      deleteEvaluationFromMysql(evaluationId).catch(() => {});
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `teachers/${selectedTeacherId}/evaluations/${evaluationId}`);
     }

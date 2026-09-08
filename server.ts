@@ -258,6 +258,7 @@ async function startServer() {
     try {
       const pool = getDbPool();
       const s = req.body;
+      const schoolId = s.id || s.npsn;
       const sql = `
         INSERT INTO \`schools\` (id, npsn, name, city, address, principalName, principalNip, principalStatus)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -267,10 +268,153 @@ async function startServer() {
           principalNip = VALUES(principalNip), principalStatus = VALUES(principalStatus)
       `;
       await pool.query(sql, [
-        s.id, s.npsn, s.name, s.city || null, s.address || null,
+        schoolId, s.npsn, s.name, s.city || null, s.address || null,
         s.principalName || null, s.principalNip || null, s.principalStatus || 'definitif'
       ]);
-      res.json({ success: true, id: s.id });
+      res.json({ success: true, id: schoolId });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/mysql/schools/:id", async (req, res) => {
+    try {
+      const pool = getDbPool();
+      const id = req.params.id;
+      await pool.query("DELETE FROM `schools` WHERE `id` = ? OR `npsn` = ?", [id, id]);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Batch sync endpoint from client to MySQL
+  app.post("/api/mysql/sync-batch", async (req, res) => {
+    try {
+      const pool = getDbPool();
+      const { schools, teachers, users, kopSettings } = req.body;
+      let schoolsCount = 0;
+      let teachersCount = 0;
+      let usersCount = 0;
+
+      if (Array.isArray(schools)) {
+        for (const s of schools) {
+          const sId = s.id || s.npsn;
+          if (sId && s.npsn && s.name) {
+            await pool.query(`
+              INSERT INTO \`schools\` (id, npsn, name, city, address, principalName, principalNip, principalStatus)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                npsn = VALUES(npsn), name = VALUES(name), city = VALUES(city),
+                address = VALUES(address), principalName = VALUES(principalName),
+                principalNip = VALUES(principalNip), principalStatus = VALUES(principalStatus)
+            `, [
+              sId, s.npsn, s.name, s.city || null, s.address || null,
+              s.principalName || null, s.principalNip || null, s.principalStatus || 'definitif'
+            ]);
+            schoolsCount++;
+          }
+        }
+      }
+
+      if (Array.isArray(teachers)) {
+        for (const t of teachers) {
+          if (t.id && t.name && t.nip) {
+            const sql = `
+              INSERT INTO \`teachers\` (
+                id, name, nip, school, currentGolongan, targetGolongan,
+                baseAK, akIntegrasi2022, akPendidikan, ratingSKP, workDurationYears,
+                karpegNumber, birthPlaceDate, gender, tmtCurrentPangkat, tmtCurrentJabatan,
+                unitKerja, instansiBiro, nomorSuratKonversi, nomorSuratAkumulasi, nomorSuratPenetapan,
+                tempatDitetapkan, tanggalPenetapan, pejabatPenilaiTitle, pejabatPenilaiInstansi,
+                pejabatPenilaiNama, pejabatPenilaiNip, pejabatPenilaiGolongan, pejabatPenilaiStatus,
+                signatureType, ttdBasahType, ttdBasahImageUrl, ttdBasahImageBase64, ttdBasahHeight,
+                tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2,
+                skPangkatFileLink, pakIntegrasiFileLink, ijazahFileLink, additionalFileLink, createdBy
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                name = VALUES(name), nip = VALUES(nip), school = VALUES(school),
+                currentGolongan = VALUES(currentGolongan), targetGolongan = VALUES(targetGolongan),
+                baseAK = VALUES(baseAK), akIntegrasi2022 = VALUES(akIntegrasi2022), akPendidikan = VALUES(akPendidikan),
+                ratingSKP = VALUES(ratingSKP), workDurationYears = VALUES(workDurationYears),
+                karpegNumber = VALUES(karpegNumber), birthPlaceDate = VALUES(birthPlaceDate), gender = VALUES(gender),
+                tmtCurrentPangkat = VALUES(tmtCurrentPangkat), tmtCurrentJabatan = VALUES(tmtCurrentJabatan),
+                unitKerja = VALUES(unitKerja), instansiBiro = VALUES(instansiBiro),
+                nomorSuratKonversi = VALUES(nomorSuratKonversi), nomorSuratAkumulasi = VALUES(nomorSuratAkumulasi),
+                nomorSuratPenetapan = VALUES(nomorSuratPenetapan), tempatDitetapkan = VALUES(tempatDitetapkan),
+                tanggalPenetapan = VALUES(tanggalPenetapan), pejabatPenilaiTitle = VALUES(pejabatPenilaiTitle),
+                pejabatPenilaiInstansi = VALUES(pejabatPenilaiInstansi), pejabatPenilaiNama = VALUES(pejabatPenilaiNama),
+                pejabatPenilaiNip = VALUES(pejabatPenilaiNip), pejabatPenilaiGolongan = VALUES(pejabatPenilaiGolongan),
+                pejabatPenilaiStatus = VALUES(pejabatPenilaiStatus), signatureType = VALUES(signatureType),
+                ttdBasahType = VALUES(ttdBasahType), ttdBasahImageUrl = VALUES(ttdBasahImageUrl),
+                ttdBasahImageBase64 = VALUES(ttdBasahImageBase64), ttdBasahHeight = VALUES(ttdBasahHeight),
+                tteLogoType = VALUES(tteLogoType), tteLogoUrl = VALUES(tteLogoUrl), tteLogoBase64 = VALUES(tteLogoBase64),
+                tteTextHeader = VALUES(tteTextHeader), tteTextJabatan1 = VALUES(tteTextJabatan1), tteTextJabatan2 = VALUES(tteTextJabatan2),
+                skPangkatFileLink = VALUES(skPangkatFileLink), pakIntegrasiFileLink = VALUES(pakIntegrasiFileLink),
+                ijazahFileLink = VALUES(ijazahFileLink), additionalFileLink = VALUES(additionalFileLink)
+            `;
+            const values = [
+              t.id, t.name, t.nip, t.school || '', t.currentGolongan || 'III/c', t.targetGolongan || 'III/d',
+              t.baseAK || 0, t.akIntegrasi2022 || 0, t.akPendidikan || 0, t.ratingSKP || 'Baik', t.workDurationYears || 0,
+              t.karpegNumber || null, t.birthPlaceDate || null, t.gender || 'Laki-Laki', t.tmtCurrentPangkat || null, t.tmtCurrentJabatan || null,
+              t.unitKerja || null, t.instansiBiro || null, t.nomorSuratKonversi || null, t.nomorSuratAkumulasi || null, t.nomorSuratPenetapan || null,
+              t.tempatDitetapkan || null, t.tanggalPenetapan || null, t.pejabatPenilaiTitle || null, t.pejabatPenilaiInstansi || null,
+              t.pejabatPenilaiNama || null, t.pejabatPenilaiNip || null, t.pejabatPenilaiGolongan || null, t.pejabatPenilaiStatus || 'definitif',
+              t.signatureType || 'ttd_basah', t.ttdBasahType || 'blank', t.ttdBasahImageUrl || null, t.ttdBasahImageBase64 || null, t.ttdBasahHeight || 64,
+              t.tteLogoType || 'default', t.tteLogoUrl || null, t.tteLogoBase64 || null, t.tteTextHeader || null, t.tteTextJabatan1 || null, t.tteTextJabatan2 || null,
+              t.skPangkatFileLink || null, t.pakIntegrasiFileLink || null, t.ijazahFileLink || null, t.additionalFileLink || null, t.createdBy || 'admin'
+            ];
+            await pool.query(sql, values);
+            teachersCount++;
+          }
+        }
+      }
+
+      if (Array.isArray(users)) {
+        for (const u of users) {
+          if (u.username && u.password) {
+            await pool.query(`
+              INSERT INTO \`app_users\` (username, password, role, school, displayName)
+              VALUES (?, ?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                password = VALUES(password), role = VALUES(role),
+                school = VALUES(school), displayName = VALUES(displayName)
+            `, [u.username, u.password, u.role || 'school_admin', u.school || 'ALL', u.displayName || u.username]);
+            usersCount++;
+          }
+        }
+      }
+
+      if (kopSettings) {
+        const k = kopSettings;
+        const sql = `
+          INSERT INTO \`kop_settings\` (
+            id, logoType, customLogoUrl, row1, row2, row3, row4, row5, row6,
+            signatureType, ttdBasahType, ttdBasahImageUrl, ttdBasahImageBase64, ttdBasahHeight,
+            tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2
+          ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            logoType = VALUES(logoType), customLogoUrl = VALUES(customLogoUrl),
+            row1 = VALUES(row1), row2 = VALUES(row2), row3 = VALUES(row3),
+            row4 = VALUES(row4), row5 = VALUES(row5), row6 = VALUES(row6),
+            signatureType = VALUES(signatureType), ttdBasahType = VALUES(ttdBasahType),
+            ttdBasahImageUrl = VALUES(ttdBasahImageUrl), ttdBasahImageBase64 = VALUES(ttdBasahImageBase64),
+            ttdBasahHeight = VALUES(ttdBasahHeight), tteLogoType = VALUES(tteLogoType),
+            tteLogoUrl = VALUES(tteLogoUrl), tteLogoBase64 = VALUES(tteLogoBase64),
+            tteTextHeader = VALUES(tteTextHeader), tteTextJabatan1 = VALUES(tteTextJabatan1),
+            tteTextJabatan2 = VALUES(tteTextJabatan2)
+        `;
+        await pool.query(sql, [
+          k.logoType || 'svg-jabar', k.customLogoUrl || null,
+          k.row1 || '', k.row2 || '', k.row3 || '', k.row4 || '', k.row5 || '', k.row6 || '',
+          k.signatureType || 'ttd_basah', k.ttdBasahType || 'blank', k.ttdBasahImageUrl || null,
+          k.ttdBasahImageBase64 || null, k.ttdBasahHeight || 64, k.tteLogoType || 'default',
+          k.tteLogoUrl || null, k.tteLogoBase64 || null, k.tteTextHeader || null,
+          k.tteTextJabatan1 || null, k.tteTextJabatan2 || null
+        ]);
+      }
+
+      res.json({ success: true, synced: { schoolsCount, teachersCount, usersCount } });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
