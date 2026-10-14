@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "pack:cpanel": "npm run build && python3 -c \"import zipfile, os; files=['app.js','server.js','package.json','.env.example','database.sql','PANDUAN_CPANEL_DAN_DATABASE.md']; z=zipfile.ZipFile('siap_upload_cpanel.zip','w',zipfile.ZIP_DEFLATED); [z.write(f,f) for f in files if os.path.exists(f)]; [(z.write(os.path.join(r,fi), os.path.join(r,fi))) for r,_,fs in os.walk('dist') for fi in fs]; z.close(); print('siap_upload_cpanel.zip siap!')\"",
+    "pack:cpanel": "npm run build && python3 -c \"import zipfile, os; z=zipfile.ZipFile('siap_upload_cpanel.zip','w',zipfile.ZIP_DEFLATED); files=['api.php','.htaccess','.env','app.js','server.js','package.json','.env.example','database.sql','PANDUAN_CPANEL_DAN_DATABASE.md']; [z.write(f,f) for f in files if os.path.exists(f)]; [(z.write(os.path.join(r,fi), os.path.join(r,fi))) for r,_,fs in os.walk('dist') for fi in fs]; [z.write(os.path.join('dist', fi), fi) for fi in os.listdir('dist') if os.path.isfile(os.path.join('dist', fi))]; [(z.write(os.path.join('dist/assets', fi), os.path.join('assets', fi))) for fi in os.listdir('dist/assets') if os.path.exists('dist/assets') and os.path.isfile(os.path.join('dist/assets', fi))]; z.close(); print('siap_upload_cpanel.zip siap!')\"",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
