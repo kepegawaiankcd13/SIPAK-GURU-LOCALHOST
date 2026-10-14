@@ -2,14 +2,11 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { getDbPool, checkDbConnection, getDatabaseSqlContent, autoInitializeMysql } from "./src/server/db";
 import { readLocalDb, writeLocalDb, type LocalDbData } from "./src/server/fileDb";
 
-const currentDir = typeof __dirname !== "undefined"
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
+const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
 async function startServer() {
   const app = express();
@@ -713,12 +710,13 @@ async function startServer() {
   });
 
   // Serve Vite in development, static files in production
-  const isCompiledBundle = fs.existsSync(path.join(currentDir, "index.html"));
-  if (process.env.NODE_ENV !== "production" && !isCompiledBundle) {
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev) {
     try {
       const vite = await createViteServer({
         server: {
           middlewareMode: true,
+          hmr: false,
           watch: {
             ignored: [
               "**/data/**",
@@ -741,28 +739,35 @@ async function startServer() {
     serveStaticAssets(app);
   }
 
-  const rawPort = process.env.PORT;
-  if (rawPort && isNaN(Number(rawPort))) {
-    // Phusion Passenger / cPanel Unix domain socket
-    app.listen(rawPort, () => {
-      console.log(`SIPAK-GURU Server running on socket ${rawPort} (Phusion Passenger mode)`);
+  if (isDev) {
+    const devPort = 3000;
+    app.listen(devPort, "0.0.0.0", () => {
+      console.log(`SIPAK-GURU Dev Server running on http://0.0.0.0:${devPort}`);
     });
   } else {
-    const portNum = Number(rawPort) || 3000;
-    app.listen(portNum, "0.0.0.0", () => {
-      console.log(`SIPAK-GURU Server running on http://0.0.0.0:${portNum}`);
-    });
+    const rawPort = process.env.PORT;
+    if (rawPort && isNaN(Number(rawPort))) {
+      // Phusion Passenger / cPanel Unix domain socket
+      app.listen(rawPort, () => {
+        console.log(`SIPAK-GURU Server running on socket ${rawPort} (Phusion Passenger mode)`);
+      });
+    } else {
+      const portNum = Number(rawPort) || 3000;
+      app.listen(portNum, "0.0.0.0", () => {
+        console.log(`SIPAK-GURU Server running on http://0.0.0.0:${portNum}`);
+      });
+    }
   }
 }
 
 function serveStaticAssets(app: express.Express) {
   let distPath = path.join(process.cwd(), "dist");
-  if (fs.existsSync(path.join(currentDir, "index.html"))) {
+  if (fs.existsSync(path.join(currentDir, "index.html")) && currentDir !== process.cwd()) {
     distPath = currentDir;
-  } else if (fs.existsSync(path.join(currentDir, "../dist", "index.html"))) {
-    distPath = path.resolve(currentDir, "../dist");
   } else if (fs.existsSync(path.join(process.cwd(), "dist", "index.html"))) {
     distPath = path.join(process.cwd(), "dist");
+  } else if (fs.existsSync(path.join(currentDir, "../dist", "index.html"))) {
+    distPath = path.resolve(currentDir, "../dist");
   }
 
   app.use(express.static(distPath, {

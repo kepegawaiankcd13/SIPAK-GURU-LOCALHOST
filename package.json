@@ -7,6 +7,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
+    "pack:cpanel": "npm run build && python3 -c \"import zipfile, os; files=['app.js','server.js','package.json','.env.example','database.sql','PANDUAN_CPANEL_DAN_DATABASE.md']; z=zipfile.ZipFile('siap_upload_cpanel.zip','w',zipfile.ZIP_DEFLATED); [z.write(f,f) for f in files if os.path.exists(f)]; [(z.write(os.path.join(r,fi), os.path.join(r,fi))) for r,_,fs in os.walk('dist') for fi in fs]; z.close(); print('siap_upload_cpanel.zip siap!')\"",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
