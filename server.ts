@@ -745,16 +745,14 @@ async function startServer() {
       console.log(`SIPAK-GURU Dev Server running on http://0.0.0.0:${devPort}`);
     });
   } else {
-    const rawPort = process.env.PORT;
-    if (rawPort && isNaN(Number(rawPort))) {
-      // Phusion Passenger / cPanel Unix domain socket
-      app.listen(rawPort, () => {
-        console.log(`SIPAK-GURU Server running on socket ${rawPort} (Phusion Passenger mode)`);
-      });
+    // Mode Produksi: Phusion Passenger / LiteSpeed / cPanel Node runner
+    if (typeof (global as any).PhusionPassenger !== "undefined") {
+      app.listen("passenger");
+      console.log("SIPAK-GURU Server running under Phusion Passenger / LiteSpeed (socket: passenger)");
     } else {
-      const portNum = Number(rawPort) || 3000;
-      app.listen(portNum, "0.0.0.0", () => {
-        console.log(`SIPAK-GURU Server running on http://0.0.0.0:${portNum}`);
+      const port = process.env.PORT || 3000;
+      app.listen(port, () => {
+        console.log(`SIPAK-GURU Server running on port/socket: ${port}`);
       });
     }
   }
