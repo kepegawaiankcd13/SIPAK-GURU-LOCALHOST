@@ -30,7 +30,8 @@ import {
   Menu,
   X,
   Terminal,
-  Database
+  Database,
+  Camera
 } from "lucide-react";
 import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings } from "./types";
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from "./data/golonganData";
@@ -122,6 +123,8 @@ const DEFAULT_EVALUATIONS: Omit<SKPEvaluation, 'id'>[] = [
     customMonths: 12
   }
 ];
+
+const DEFAULT_APP_LOGO = "https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg";
 
 export default function App() {
   // Authentication states (custom database sessions)
@@ -255,6 +258,14 @@ export default function App() {
   }, []);
 
   // Admin Kop & Logo settings
+  const [appLogo, setAppLogo] = useState<string>(() => {
+    return localStorage.getItem('simpak_app_logo') || DEFAULT_APP_LOGO;
+  });
+  const [logoModalOpen, setLogoModalOpen] = useState(false);
+  const [customLogoUrlInput, setCustomLogoUrlInput] = useState('');
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+
   const [kopSettings, setKopSettings] = useState<KopSettings>(() => {
     const saved = localStorage.getItem('sipak_kop_settings');
     if (saved) {
@@ -283,6 +294,17 @@ export default function App() {
     // Auto-check and clean legacy cache
     checkAndMigrateLegacyLocalStorage().catch(() => {});
     setAuthLoading(false);
+
+    // Initial load of Kop & Logo from MySQL
+    fetchKopFromMysql().then(data => {
+      if (data) {
+        setKopSettings(prev => ({ ...prev, ...data }));
+        if (data.appLogoUrl) {
+          setAppLogo(data.appLogoUrl);
+          localStorage.setItem('simpak_app_logo', data.appLogoUrl);
+        }
+      }
+    }).catch(() => {});
   }, []);
 
   // Load settings from MySQL on Login
@@ -291,11 +313,95 @@ export default function App() {
     fetchKopFromMysql().then(data => {
       if (data) {
         setKopSettings(prev => ({ ...prev, ...data }));
+        if (data.appLogoUrl) {
+          setAppLogo(data.appLogoUrl);
+          localStorage.setItem('simpak_app_logo', data.appLogoUrl);
+        }
       }
     }).catch(err => {
       console.warn("Gagal memuat KOP dari MySQL:", err);
     });
   }, [user]);
+
+  // Handler to save and persist app logo
+  const handleSaveAppLogo = async (newLogoUrl: string) => {
+    setAppLogo(newLogoUrl);
+    localStorage.setItem('simpak_app_logo', newLogoUrl);
+    setLogoPreviewUrl(null);
+    setLogoModalOpen(false);
+
+    const updatedKop: KopSettings = {
+      ...kopSettings,
+      appLogoUrl: newLogoUrl
+    };
+    setKopSettings(updatedKop);
+
+    try {
+      await saveKopToMysql(updatedKop);
+    } catch (err) {
+      console.warn("Gagal mencadangkan logo ke MySQL:", err);
+    }
+
+    toast.success("Logo aplikasi SIMPAK berhasil diperbarui! Perubahan langsung diterapkan ke Login dan Dashboard.");
+  };
+
+  const handleResetAppLogo = () => {
+    handleSaveAppLogo(DEFAULT_APP_LOGO);
+  };
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploadError(null);
+
+    if (!file.type.match(/^image\/(png|jpeg|jpg|webp|svg\+xml)$/)) {
+      setLogoUploadError("File harus berupa format gambar (PNG, JPG, WebP, atau SVG).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (file.type.includes('svg')) {
+        setLogoPreviewUrl(result);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_SIZE = 600;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/png');
+          setLogoPreviewUrl(compressed);
+        } else {
+          setLogoPreviewUrl(result);
+        }
+      };
+      img.src = result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Save settings to MySQL and LocalStorage
   useEffect(() => {
@@ -601,7 +707,7 @@ export default function App() {
     setLogoutConfirmOpen(false);
     swal.fire({
       title: "Keluar Berhasil!",
-      text: `Sampai jumpa kembali, ${oldName}! Anda telah berhasil keluar dari SIPAK-GURU Hub dengan aman.`,
+      text: `Sampai jumpa kembali, ${oldName}! Anda telah berhasil keluar dari SIMPAK Hub dengan aman.`,
       icon: "info",
       confirmButtonText: "Kembali ke Beranda"
     });
@@ -1271,7 +1377,7 @@ export default function App() {
               <div className="space-y-1.5">
                 <h3 className="text-base font-black text-slate-100 uppercase tracking-tight font-sans">Konfirmasi Keluar</h3>
                 <p className="text-xs text-slate-400 font-sans">
-                  Apakah Anda yakin ingin keluar dari portal administrasi SIPAK-GURU? Anda perlu masuk kembali menggunakan kredensial Anda untuk melanjutkan pekerjaan.
+                  Apakah Anda yakin ingin keluar dari portal administrasi SIMPAK? Anda perlu masuk kembali menggunakan kredensial Anda untuk melanjutkan pekerjaan.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -1327,6 +1433,189 @@ export default function App() {
             </div>
           </div>
         )}
+        {/* Application Logo Customization Modal */}
+        {logoModalOpen && (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fadeIn text-slate-100 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative my-8">
+              
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white tracking-tight uppercase">Ganti Logo Aplikasi SIMPAK</h3>
+                    <p className="text-[11px] text-slate-400">Atur logo untuk Tampilan Login & Menu Dashboard</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogoModalOpen(false);
+                    setLogoPreviewUrl(null);
+                    setLogoUploadError(null);
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Logo Previews (Current / Proposed) */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                  Pratinjau Logo Saat Ini & Tampilan Baru:
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Logo Aktif</span>
+                    <div className="w-16 h-20 flex items-center justify-center">
+                      <img 
+                        src={appLogo || "/logo.png"} 
+                        alt="Logo Aktif" 
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = DEFAULT_APP_LOGO;
+                        }}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                  <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Pilihan Baru</span>
+                    <div className="w-16 h-20 flex items-center justify-center">
+                      <img 
+                        src={logoPreviewUrl || appLogo || "/logo.png"} 
+                        alt="Pilihan Baru" 
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = DEFAULT_APP_LOGO;
+                        }}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Upload Option 1: File from Computer / Phone */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-black uppercase text-emerald-400 tracking-wider">
+                  Cara 1: Unggah File Logo dari Komputer / HP
+                </label>
+                <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-4 text-center transition-colors bg-slate-950/40">
+                  <input
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml"
+                    id="simpak_logo_input"
+                    className="hidden"
+                    onChange={handleLogoFileUpload}
+                  />
+                  <label htmlFor="simpak_logo_input" className="cursor-pointer flex flex-col items-center gap-2">
+                    <Upload className="w-6 h-6 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-200">
+                      Klik di sini untuk memilih file gambar logo
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      Mendukung PNG, JPG, WebP, SVG (Contoh: LOGO CABANG DINAS-13.png)
+                    </span>
+                  </label>
+                </div>
+                {logoUploadError && (
+                  <p className="text-[11px] text-rose-400 font-bold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" /> {logoUploadError}
+                  </p>
+                )}
+              </div>
+
+              {/* Upload Option 2: cPanel File Manager instructions */}
+              <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-teal-400 tracking-wider">
+                    Cara 2: Lewat File Manager cPanel (Tanpa Login)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoPreviewUrl("/logo.png");
+                    }}
+                    className="text-[10px] font-bold text-emerald-400 hover:underline cursor-pointer"
+                  >
+                    Gunakan /logo.png
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Cukup upload file gambar logo Anda ke File Manager cPanel di folder <strong className="text-white">public_html</strong> dan beri nama file <strong className="text-emerald-300">logo.png</strong>. Sistem otomatis membaca file tersebut!
+                </p>
+              </div>
+
+              {/* Upload Option 3: Image URL input */}
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                  Cara 3: Masukkan Link / URL Gambar Online
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://... atau /logo.png"
+                    value={customLogoUrlInput}
+                    onChange={(e) => setCustomLogoUrlInput(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customLogoUrlInput.trim()) {
+                        setLogoPreviewUrl(customLogoUrlInput.trim());
+                      }
+                    }}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
+                  >
+                    Cek
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={handleResetAppLogo}
+                  className="w-full sm:w-auto px-4 py-2 text-xs text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors font-bold cursor-pointer"
+                >
+                  Reset Logo Bawaan
+                </button>
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoModalOpen(false);
+                      setLogoPreviewUrl(null);
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (logoPreviewUrl) {
+                        handleSaveAppLogo(logoPreviewUrl);
+                      } else if (customLogoUrlInput.trim()) {
+                        handleSaveAppLogo(customLogoUrlInput.trim());
+                      } else {
+                        setLogoModalOpen(false);
+                      }
+                    }}
+                    className="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 cursor-pointer"
+                  >
+                    SIMPAN LOGO BARU
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
         {/* XAMPP MySQL Configuration Modal */}
         <XamppModal isOpen={xamppModalOpen} onClose={() => setXamppModalOpen(false)} />
       </>
@@ -1340,7 +1629,7 @@ export default function App() {
         <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center max-w-sm w-full text-center space-y-4">
           <div className="w-14 h-14 rounded-full border-t-4 border-l-4 border-teal-500 animate-spin"></div>
           <div>
-            <h3 className="font-bold text-slate-100 text-base">Memuat Portal SIPAK-GURU</h3>
+            <h3 className="font-bold text-slate-100 text-base">Memuat Portal SIMPAK</h3>
             <p className="text-xs text-slate-450 mt-1">Menghubungkan ke secure cloud service...</p>
           </div>
         </div>
@@ -1406,24 +1695,30 @@ export default function App() {
             <div className="flex flex-col items-center space-y-3">
               <div className="w-16 h-20 flex items-center justify-center filter drop-shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                 <img 
-                  src="https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg" 
-                  alt="Logo Provinsi Jawa Barat" 
+                  src={appLogo || "/logo.png"} 
+                  alt="Logo SIMPAK" 
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (target.src !== DEFAULT_APP_LOGO) {
+                      target.src = DEFAULT_APP_LOGO;
+                    }
+                  }}
                   className="w-full h-full object-contain"
                   referrerPolicy="no-referrer"
                 />
               </div>
  
               <div className="text-center">
-                <span className="block text-[9px] font-black tracking-widest text-emerald-400 uppercase">PORTAL ADMINISTRASI KANTOR</span>
-                <h1 className="text-xl font-extrabold text-slate-100 uppercase tracking-tight">SIPAK-GURU PNS</h1>
+                <span className="block text-[9px] font-black tracking-widest text-emerald-400 uppercase">PORTAL ADMINISTRASI KEPEGAWAIAN</span>
+                <h1 className="text-xl font-extrabold text-slate-100 uppercase tracking-tight">SIMPAK</h1>
                 <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
                   Sistem Informasi Perhitungan Angka Kredit Integrasi Guru Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat
                 </p>
               </div>
             </div>
- 
+
             <div className="border-t border-slate-800/50 my-1"></div>
- 
+
             {/* Login control form */}
             <form onSubmit={handleLogin} className="space-y-4">
               {loginError && (
@@ -1462,56 +1757,14 @@ export default function App() {
                 disabled={isLogining}
                 className={`w-full py-3 px-4 bg-teal-600 hover:bg-teal-505 active:bg-teal-700 text-white font-extrabold text-xs rounded-xl shadow-lg hover:shadow-teal-900/20 cursor-pointer transition-all border border-teal-500 select-none ${isLogining ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                {isLogining ? "MEMVERIFIKASI AUTENTIKASI..." : "MASUK KE PORTAL SIPAK"}
+                {isLogining ? "MEMVERIFIKASI AUTENTIKASI..." : "MASUK KE PORTAL SIMPAK"}
               </button>
             </form>
 
-            {/* Quick 1-Click Demo Login */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Masuk Cepat 1-Klik (Akses Langsung):</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const superAdmin: AppUser = {
-                      username: "admin",
-                      displayName: "Super Admin Dinas Pendidikan",
-                      role: "super_admin",
-                      school: "ALL"
-                    };
-                    localStorage.setItem("sipak_current_user", JSON.stringify(superAdmin));
-                    setUser(superAdmin);
-                  }}
-                  className="py-2.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/30 rounded-xl text-[11px] font-bold transition-all text-center cursor-pointer"
-                >
-                  👑 Super Admin Dinas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const sman2Admin: AppUser = {
-                      username: "sman2ciamis",
-                      displayName: "Admin SMAN 2 Ciamis",
-                      role: "school_admin",
-                      school: "SMAN 2 CIAMIS"
-                    };
-                    localStorage.setItem("sipak_current_user", JSON.stringify(sman2Admin));
-                    setUser(sman2Admin);
-                  }}
-                  className="py-2.5 px-3 bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 hover:text-teal-200 border border-teal-500/30 rounded-xl text-[11px] font-bold transition-all text-center cursor-pointer"
-                >
-                  🏫 Admin SMAN 2 Ciamis
-                </button>
-              </div>
-            </div>
- 
             {/* Security disclaimer */}
             <div className="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800/60 text-[10px] text-slate-400 leading-relaxed font-sans space-y-1">
               <span className="font-bold text-emerald-400 block uppercase">Catatan Verifikasi Otoritas:</span>
               <p>Masing-masing pendaftaran sekolah diatur tersendiri untuk mengelola guru instansinya. Super Admin KCD XIII memegang kendali rekapitulasi data global.</p>
-              <div className="pt-1.5 text-slate-500 font-mono text-[9px]">
-                <p>Default Demo Sekolah: sman2ciamis / sman2ciamis123</p>
-              </div>
             </div>
  
           </div>
@@ -1535,13 +1788,19 @@ export default function App() {
         <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center text-white z-20 print:hidden select-none w-full">
           <div className="flex items-center gap-2">
             <img 
-              src="https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg" 
-              alt="Logo Jabar" 
+              src={appLogo || "/logo.png"} 
+              alt="Logo SIMPAK" 
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (target.src !== DEFAULT_APP_LOGO) {
+                  target.src = DEFAULT_APP_LOGO;
+                }
+              }}
               className="w-7 h-9 object-contain"
               referrerPolicy="no-referrer"
             />
             <div>
-              <span className="block text-[8px] font-black text-emerald-400 tracking-wider">SIPAK-GURU PNS</span>
+              <span className="block text-[8px] font-black text-emerald-400 tracking-wider">SIMPAK</span>
               <span className="block text-[10px] font-bold text-slate-300">CABIN DISDIK JABAR XIII</span>
             </div>
           </div>
@@ -1570,20 +1829,43 @@ export default function App() {
           ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}>
           {/* Sidebar Top Brand Header */}
-          <div className="p-6 border-b border-slate-850 flex items-center gap-3 bg-slate-950/30">
-            <div className="w-10 h-12 flex items-center justify-center shrink-0">
-              <img 
-                src="https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg" 
-                alt="Logo Provinsi Jawa Barat" 
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-              />
+          <div className="p-6 border-b border-slate-850 flex items-center justify-between bg-slate-950/30">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-12 flex items-center justify-center shrink-0">
+                <img 
+                  src={appLogo || "/logo.png"} 
+                  alt="Logo SIMPAK" 
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (target.src !== DEFAULT_APP_LOGO) {
+                      target.src = DEFAULT_APP_LOGO;
+                    }
+                  }}
+                  className="w-full h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <div className="min-w-0">
+                <span className="block text-[8px] font-black tracking-widest text-emerald-400 uppercase truncate">PORTAL ADMINISTRASI</span>
+                <h2 className="text-sm font-extrabold text-white tracking-tight uppercase truncate">SIMPAK</h2>
+                <span className="block text-[9px] text-slate-400 font-medium leading-tight truncate">CDP WILAYAH XIII JABAR</span>
+              </div>
             </div>
-            <div>
-              <span className="block text-[8px] font-black tracking-widest text-emerald-400 uppercase">PORTAL ADMINISTRASI</span>
-              <h2 className="text-sm font-extrabold text-white tracking-tight uppercase">SIPAK-GURU PNS</h2>
-              <span className="block text-[9px] text-slate-400 font-medium leading-tight">CDP WILAYAH XIII JABAR</span>
-            </div>
+            {(user.role === 'super_admin' || user.role === 'school_admin') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLogoPreviewUrl(null);
+                  setLogoUploadError(null);
+                  setCustomLogoUrlInput('');
+                  setLogoModalOpen(true);
+                }}
+                title="Ganti Logo Aplikasi SIMPAK"
+                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* User Profile Info section in Sidebar */}
@@ -1777,7 +2059,7 @@ export default function App() {
               <LogOut className="w-3.5 h-3.5" /> KELUAR PORTAL
             </button>
             <div className="text-center text-[9px] text-slate-500 font-mono tracking-tight leading-tight">
-              SIPAK-GURU Hub v1.5 • 2026<br />Cabang Dinas Pendidikan Wilayah XIII
+              SIMPAK Hub v1.5 • 2026<br />Cabang Dinas Pendidikan Wilayah XIII
             </div>
           </div>
         </aside>
@@ -1803,7 +2085,7 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase text-teal-655 text-teal-600 tracking-wider">SIPAK-GURU Hub</span>
+                  <span className="text-[10px] font-black uppercase text-teal-655 text-teal-600 tracking-wider">SIMPAK Hub</span>
                   <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Pangkalan Data PAK Guru PNS</h1>
                   <p className="text-xs text-slate-500">Kelola perhitungan angka kredit mutasi promosi pangkat ratusan guru ASN dengan instan dan aman.</p>
                 </div>
@@ -2589,6 +2871,13 @@ export default function App() {
             <KopAdminTab
               kopSettings={kopSettings}
               setKopSettings={setKopSettings}
+              appLogo={appLogo}
+              onOpenLogoModal={() => {
+                setLogoPreviewUrl(null);
+                setLogoUploadError(null);
+                setCustomLogoUrlInput('');
+                setLogoModalOpen(true);
+              }}
             />
           )}
 
@@ -2608,7 +2897,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="bg-slate-900 border-t border-slate-950 py-6 px-6 text-center text-xs text-slate-400 select-none shrink-0">
-          <p className="font-bold text-slate-300">SIPAK-GURU Hub © 2026</p>
+          <p className="font-bold text-slate-300">SIMPAK Hub © 2026</p>
           <p className="text-[10px] text-slate-500 mt-0.5">Cabang Dinas Pendidikan Wilayah XIII Provinsi Jawa Barat</p>
         </footer>
 
@@ -2642,7 +2931,7 @@ export default function App() {
       <div id="top-admin-banner-workspace" className="bg-teal-950 text-teal-200 text-[11px] py-2 px-6 flex flex-col sm:flex-row justify-between items-center gap-2 border-b border-teal-900 font-mono select-none print:hidden">
         <div className="flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-teal-300 animate-pulse fill-teal-950" />
-          <span>PORTAL SIPAK-GURU • PEMBANGUNAN DOKUMEN PAK RESMI</span>
+          <span>PORTAL SIMPAK • PEMBANGUNAN DOKUMEN PAK RESMI</span>
         </div>
         <div className="flex items-center gap-4">
           <span>Petugas: <strong>{user.displayName || user.username}</strong></span>
@@ -2687,7 +2976,7 @@ export default function App() {
                   S
                 </div>
                 <div>
-                  <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">SIPAK-GURU KCD XIII</h1>
+                  <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">SIMPAK KCD XIII</h1>
                   <p className="text-[10px] uppercase font-bold text-slate-400">PNS/ASN Career Tracker</p>
                 </div>
               </div>
@@ -2885,6 +3174,13 @@ export default function App() {
                   <KopAdminTab
                     kopSettings={kopSettings}
                     setKopSettings={setKopSettings}
+                    appLogo={appLogo}
+                    onOpenLogoModal={() => {
+                      setLogoPreviewUrl(null);
+                      setLogoUploadError(null);
+                      setCustomLogoUrlInput('');
+                      setLogoModalOpen(true);
+                    }}
                   />
                 )}
 
@@ -2904,7 +3200,7 @@ export default function App() {
       <footer className="bg-slate-900 border-t border-slate-950 py-6 px-6 text-center text-xs text-slate-400 print:hidden">
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
-            <p className="font-bold text-slate-300">SIPAK-GURU © 2026</p>
+            <p className="font-bold text-slate-300">SIMPAK © 2026</p>
             <p className="text-[10px] text-slate-500 font-medium">Sistem Perhitungan Portofolio Angka Kredit Integrasi Guru Dinas Pendidikan Provinsi Jawa Barat</p>
           </div>
           <div className="flex gap-4 text-[10px] select-none text-slate-500">

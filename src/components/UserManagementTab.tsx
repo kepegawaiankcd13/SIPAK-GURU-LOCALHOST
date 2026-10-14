@@ -315,7 +315,7 @@ export default function UserManagementTab() {
       {/* Overview Block */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-teal-650 tracking-wider">SIPAK-GURU Otoritas</span>
+          <span className="text-[10px] font-black uppercase text-teal-650 tracking-wider">SIMPAK Otoritas</span>
           <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Manajemen Akun & Keamanan Data</h2>
           <p className="text-xs text-slate-500">
             Daftarkan username & password khusus tiap sekolah. Tiap sekolah hanya memiliki akses eksklusif ke datanya sendiri, sementara Anda melacak semuanya.

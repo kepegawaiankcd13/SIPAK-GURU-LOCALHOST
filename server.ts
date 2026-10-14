@@ -464,8 +464,9 @@ async function startServer() {
         INSERT INTO \`kop_settings\` (
           id, logoType, customLogoUrl, row1, row2, row3, row4, row5, row6,
           signatureType, ttdBasahType, ttdBasahImageUrl, ttdBasahImageBase64, ttdBasahHeight,
-          tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2
-        ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2,
+          appLogoUrl
+        ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           logoType = VALUES(logoType), customLogoUrl = VALUES(customLogoUrl),
           row1 = VALUES(row1), row2 = VALUES(row2), row3 = VALUES(row3),
@@ -475,7 +476,8 @@ async function startServer() {
           ttdBasahHeight = VALUES(ttdBasahHeight), tteLogoType = VALUES(tteLogoType),
           tteLogoUrl = VALUES(tteLogoUrl), tteLogoBase64 = VALUES(tteLogoBase64),
           tteTextHeader = VALUES(tteTextHeader), tteTextJabatan1 = VALUES(tteTextJabatan1),
-          tteTextJabatan2 = VALUES(tteTextJabatan2)
+          tteTextJabatan2 = VALUES(tteTextJabatan2),
+          appLogoUrl = VALUES(appLogoUrl)
       `;
       await pool.query(sql, [
         k.logoType || 'svg-jabar', k.customLogoUrl || null,
@@ -483,7 +485,8 @@ async function startServer() {
         k.signatureType || 'ttd_basah', k.ttdBasahType || 'blank', k.ttdBasahImageUrl || null,
         k.ttdBasahImageBase64 || null, k.ttdBasahHeight || 64, k.tteLogoType || 'default',
         k.tteLogoUrl || null, k.tteLogoBase64 || null, k.tteTextHeader || null,
-        k.tteTextJabatan1 || null, k.tteTextJabatan2 || null
+        k.tteTextJabatan1 || null, k.tteTextJabatan2 || null,
+        k.appLogoUrl || null
       ]);
     } catch (err: any) {
       console.warn("MySQL kop write warning:", err.message);

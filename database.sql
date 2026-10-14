@@ -167,6 +167,7 @@ CREATE TABLE `kop_settings` (
   `tteTextHeader` VARCHAR(255) DEFAULT 'Ditandatangani secara elektronik oleh :',
   `tteTextJabatan1` VARCHAR(255) NULL,
   `tteTextJabatan2` VARCHAR(255) NULL,
+  `appLogoUrl` LONGTEXT NULL,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
