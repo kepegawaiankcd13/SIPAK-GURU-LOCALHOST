@@ -54,19 +54,23 @@ export interface DbStatusResponse {
 export async function autoInitializeMysql(): Promise<boolean> {
   if (dbInitialized) return true;
   try {
-    // 1. Connect to MySQL server without database first to ensure database exists
-    const rootConnection = await mysql.createConnection({
-      host: DB_CONFIG.host,
-      port: DB_CONFIG.port,
-      user: DB_CONFIG.user,
-      password: DB_CONFIG.password,
-      connectTimeout: 2000
-    });
+    // 1. Connect to MySQL server without database first to ensure database exists (if permitted)
+    try {
+      const rootConnection = await mysql.createConnection({
+        host: DB_CONFIG.host,
+        port: DB_CONFIG.port,
+        user: DB_CONFIG.user,
+        password: DB_CONFIG.password,
+        connectTimeout: 2000
+      });
 
-    await rootConnection.query(
-      `CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
-    );
-    await rootConnection.end();
+      await rootConnection.query(
+        `CREATE DATABASE IF NOT EXISTS \`${DB_CONFIG.database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+      );
+      await rootConnection.end();
+    } catch {
+      // On cPanel, databases are created in cPanel UI so CREATE DATABASE is typically denied; proceed to pool
+    }
 
     // 2. Connect to the specific database pool and create tables
     const p = getDbPool();

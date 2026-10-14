@@ -58,9 +58,15 @@
     #pak-print-pages {
       display: block !important;
       width: 215mm !important;
+      max-width: 215mm !important;
       margin: 0 auto !important;
       padding: 0 !important;
       background: #ffffff !important;
+    }
+
+    #pak-print-pages > * {
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
     }
 
     /* Force the printed inner signature grid inside the document to remain two columns */
@@ -70,14 +76,14 @@
       gap: 16px !important;
     }
 
-    /* Exact F4 / Folio Page Canvas */
-    .print-page,
-    .page-break {
+    /* Exact F4 / Folio Page Canvas strictly limited to 3 pages */
+    .print-page {
       width: 215mm !important;
-      height: 330mm !important;
-      max-height: 330mm !important;
-      min-height: 330mm !important;
-      padding: 10mm 14mm 8mm 14mm !important;
+      max-width: 215mm !important;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: 320mm !important;
+      padding: 8mm 12mm 6mm 12mm !important;
       margin: 0 auto !important;
       box-sizing: border-box !important;
       border: none !important;
@@ -90,19 +96,30 @@
       flex-direction: column !important;
       justify-content: flex-start !important;
       overflow: hidden !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* Page 1 and 2 break cleanly to the next page */
+    #pak-page-1,
+    #pak-page-2 {
       page-break-before: auto !important;
+      break-before: auto !important;
       page-break-after: always !important;
       break-after: page !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
 
-    /* The 3rd page must not trigger a blank 4th page */
-    .print-page:last-child,
-    .page-break:last-child,
-    #pak-page-3 {
-      page-break-after: auto !important;
-      break-after: auto !important;
+    /* The 3rd page strictly prevents any break-after, guaranteeing exactly 3 pages */
+    #pak-page-3,
+    .print-page:last-child {
+      page-break-before: auto !important;
+      break-before: auto !important;
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
     }
     
     /* Typography formatting on print */

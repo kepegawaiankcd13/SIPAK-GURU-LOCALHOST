@@ -3,9 +3,11 @@
 -- Database Schema & Initial Data for XAMPP (MySQL / MariaDB) on macOS / Localhost
 -- ==============================================================================
 
--- 1. Buat Database jika belum ada
-CREATE DATABASE IF NOT EXISTS `sipak_guru_db` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `sipak_guru_db`;
+-- ==============================================================================
+-- PANDUAN IMPORT:
+-- 1. Di cPanel: Klik nama database Anda di panel kiri phpMyAdmin, lalu klik Import.
+-- 2. Di XAMPP: Buat database bernama sipak_guru_db lalu klik Import.
+-- ==============================================================================
 
 -- Set pengaturan sesi
 SET FOREIGN_KEY_CHECKS = 0;

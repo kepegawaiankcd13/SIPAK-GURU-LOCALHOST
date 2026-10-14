@@ -2838,8 +2838,8 @@ export default function App() {
           {/* Core Main Area Content Tab rendering (9 Cols on desktop) */}
           <main className="lg:col-span-9 space-y-6">
             
-            {/* Print specific header - invisible on screen, visible during browser printing */}
-            <div className="hidden print:block">
+            {/* Active Tab Screen Component */}
+            {activeTab === "pak_report" ? (
               <OfficialPAKReport
                 profile={profile}
                 setProfile={handleProfileChange}
@@ -2849,63 +2849,50 @@ export default function App() {
                 selectedEvalId={selectedEvalIdForPrint}
                 onSelectEvalId={setSelectedEvalIdForPrint}
               />
-            </div>
- 
-            {/* Active Tab Screen Component */}
-            <div className="print:hidden">
-              {activeTab === "dashboard" && (
-                <DashboardTab
-                  profile={profile}
-                  setProfile={handleProfileChange}
-                  evaluations={evaluations}
-                  golonganDetail={golonganDetail}
-                  targetGolonganDetail={targetGolonganDetail}
-                />
-              )}
-              
-              {activeTab === "activities" && (
-                <ActivityLogTab
-                  evaluations={evaluations}
-                  onAddEvaluation={handleAddEvaluation}
-                  onUpdateEvaluation={handleUpdateEvaluation}
-                  onDeleteEvaluation={handleDeleteEvaluation}
-                  onPrintEvaluation={handlePrintEvaluation}
-                  currentGolonganLevel={getTeacherLevel(profile.currentGolongan)}
-                  profile={profile}
-                />
-              )}
- 
-              {activeTab === "pak_report" && (
-                <OfficialPAKReport
-                  profile={profile}
-                  setProfile={handleProfileChange}
-                  evaluations={evaluations}
-                  kopSettings={kopSettings}
-                  setKopSettings={setKopSettings}
-                  selectedEvalId={selectedEvalIdForPrint}
-                  onSelectEvalId={setSelectedEvalIdForPrint}
-                />
-              )}
- 
-              {activeTab === "calculator" && (
-                <CalculatorTab />
-              )}
- 
-              {activeTab === "regulations" && (
-                <RegulationsTab />
-              )}
- 
-              {activeTab === "kop_admin" && (
-                <KopAdminTab
-                  kopSettings={kopSettings}
-                  setKopSettings={setKopSettings}
-                />
-              )}
+            ) : (
+              <div className="print:hidden">
+                {activeTab === "dashboard" && (
+                  <DashboardTab
+                    profile={profile}
+                    setProfile={handleProfileChange}
+                    evaluations={evaluations}
+                    golonganDetail={golonganDetail}
+                    targetGolonganDetail={targetGolonganDetail}
+                  />
+                )}
+                
+                {activeTab === "activities" && (
+                  <ActivityLogTab
+                    evaluations={evaluations}
+                    onAddEvaluation={handleAddEvaluation}
+                    onUpdateEvaluation={handleUpdateEvaluation}
+                    onDeleteEvaluation={handleDeleteEvaluation}
+                    onPrintEvaluation={handlePrintEvaluation}
+                    currentGolonganLevel={getTeacherLevel(profile.currentGolongan)}
+                    profile={profile}
+                  />
+                )}
 
-              {activeTab === "user_management" && user.role === "super_admin" && (
-                <UserManagementTab />
-              )}
-            </div>
+                {activeTab === "calculator" && (
+                  <CalculatorTab />
+                )}
+
+                {activeTab === "regulations" && (
+                  <RegulationsTab />
+                )}
+
+                {activeTab === "kop_admin" && (
+                  <KopAdminTab
+                    kopSettings={kopSettings}
+                    setKopSettings={setKopSettings}
+                  />
+                )}
+
+                {activeTab === "user_management" && user.role === "super_admin" && (
+                  <UserManagementTab />
+                )}
+              </div>
+            )}
 
           </main>
 

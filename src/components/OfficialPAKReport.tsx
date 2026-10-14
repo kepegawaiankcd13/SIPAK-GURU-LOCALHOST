@@ -121,17 +121,18 @@ function replaceOklchInString(cssText: string): string {
 
   let result = cssText;
 
-  // 1. Remove @property blocks that legacy html2canvas parser cannot process
+  // 1. Remove @property and @theme blocks that legacy html2canvas parser cannot process
   result = result.replace(/@property\s+[^\{]+\{[^\}]*\}/gi, '');
+  result = result.replace(/@theme\s*\{[^}]*\}/gi, '');
 
-  // 2. Unwrap @layer and @supports blocks so all utility classes (flex, grid, borders, w-20, etc.) become standard top-level CSS rules!
+  // 2. Unwrap @layer and @supports blocks so all utility classes become standard top-level CSS rules
   result = unwrapAtRule(result, '@layer');
   result = unwrapAtRule(result, '@supports');
 
-  // 3. Remove color space keywords from gradients and color-mix (e.g., "in oklab", "in oklch", "in lab", "in lch", "in srgb", "in hwb")
+  // 3. Remove color space keywords from gradients and color-mix
   result = result.replace(/\bin\s+(?:oklch|oklab|lch|lab|srgb|srgb-linear|hwb|xyz|xyz-d50|xyz-d65)\b/gi, '');
 
-  // 3. Balanced parenthesis replacer for color functions
+  // 4. Balanced parenthesis replacer for color functions
   const colorFunctions = ['color-mix', 'light-dark', 'oklch', 'oklab', 'lch', 'lab', 'hwb', 'color'];
   
   for (const funcName of colorFunctions) {
@@ -146,7 +147,6 @@ function replaceOklchInString(cssText: string): string {
       // Find matching closing parenthesis
       let depth = 0;
       let endIdx = -1;
-      const startIdx = idx + funcName.length + 1;
       for (let i = idx + funcName.length; i < result.length; i++) {
         if (result[i] === '(') depth++;
         else if (result[i] === ')') {
@@ -170,12 +170,12 @@ function replaceOklchInString(cssText: string): string {
     }
   }
 
-  // 4. Fallback regex cleanup for any malformed or leftover strings
-  result = result.replace(/oklch\s*\([^;}]*/gi, '#cbd5e1');
-  result = result.replace(/oklab\s*\([^;}]*/gi, '#cbd5e1');
-  result = result.replace(/lch\s*\([^;}]*/gi, '#cbd5e1');
-  result = result.replace(/lab\s*\([^;}]*/gi, '#cbd5e1');
-  result = result.replace(/color-mix\s*\([^;}]*/gi, '#cbd5e1');
+  // 5. Fallback regex cleanup for any malformed or leftover strings
+  result = result.replace(/oklch\([^)]*\)/gi, '#cbd5e1');
+  result = result.replace(/oklab\([^)]*\)/gi, '#cbd5e1');
+  result = result.replace(/lch\([^)]*\)/gi, '#cbd5e1');
+  result = result.replace(/lab\([^)]*\)/gi, '#cbd5e1');
+  result = result.replace(/color-mix\([^)]*(?:\([^)]*\)[^)]*)*\)/gi, '#cbd5e1');
 
   return result;
 }
@@ -280,25 +280,27 @@ export default function OfficialPAKReport({
       const page3 = document.getElementById('pak-page-3');
 
       if (!page1 || !page2 || !page3) {
-        toast.error("Elemen halaman laporan tidak lengkap.");
+        toast.error("Elemen halaman laporan tidak ditemukan.");
         setIsDownloading(false);
         return;
       }
 
-      toast.info("Sedang memproses & menyusun berkas PDF PAK Resmi F4 (3 Halaman)...");
+      toast.info("Sedang memproses & menyusun berkas PDF PAK Resmi F4 (3 Halaman Pas)...");
 
-      // Create an isolated staging container positioned offscreen at (0,0)
+      // Create an isolated staging container at (0,0) in visible coordinate space
       stageContainer = document.createElement('div');
       stageContainer.id = 'pak-pdf-render-stage';
       stageContainer.style.position = 'fixed';
       stageContainer.style.top = '0';
-      stageContainer.style.left = '-9999px';
-      stageContainer.style.width = '812px'; // Exact 215mm width in standard 96dpi
-      stageContainer.style.minHeight = '1247px'; // Exact 330mm height
+      stageContainer.style.left = '0';
+      stageContainer.style.width = '812px'; // Standard 215mm width in 96dpi
+      stageContainer.style.minHeight = '1247px'; // Standard 330mm height in 96dpi
       stageContainer.style.backgroundColor = '#ffffff';
       stageContainer.style.color = '#000000';
-      stageContainer.style.zIndex = '-9999';
+      stageContainer.style.zIndex = '999998';
       stageContainer.style.overflow = 'visible';
+      stageContainer.style.pointerEvents = 'none';
+      stageContainer.style.opacity = '1';
       document.body.appendChild(stageContainer);
 
       const pages = [page1, page2, page3];
@@ -321,6 +323,7 @@ export default function OfficialPAKReport({
         clone.style.backgroundColor = '#ffffff';
         clone.style.color = '#000000';
         clone.style.margin = '0';
+        clone.style.padding = '45px 56px 40px 56px';
         clone.style.boxShadow = 'none';
         clone.style.borderRadius = '0';
         clone.style.border = 'none';
@@ -331,7 +334,7 @@ export default function OfficialPAKReport({
         // 2. Prepare and sanitize all computed colors to explicit inline sRGB / HEX
         prepareElementForCapture(clone, origPage);
 
-        // 3. Render high-resolution canvas without any window offset
+        // 3. Render high-resolution canvas with scale 2
         const canvas = await html2canvas(clone, {
           scale: 2,
           useCORS: true,
@@ -340,8 +343,15 @@ export default function OfficialPAKReport({
           logging: false,
           scrollX: 0,
           scrollY: 0,
-          windowWidth: 1000,
+          x: 0,
+          y: 0,
+          width: 812,
+          windowWidth: 812,
           onclone: (clonedDoc: Document) => {
+            // Remove external stylesheet link tags to avoid oklch errors
+            clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach(el => el.remove());
+            
+            // Sanitize all inline styles in the cloned document
             clonedDoc.querySelectorAll('style').forEach(style => {
               if (style.textContent) {
                 style.textContent = replaceOklchInString(style.textContent);
@@ -389,94 +399,9 @@ export default function OfficialPAKReport({
 
   const handlePrintDocument = () => {
     try {
-      const printContainer = document.getElementById('pak-print-pages');
-      if (!printContainer) {
-        window.print();
-        return;
-      }
-
-      const printWin = window.open('', '_blank', 'width=950,height=1100');
-      if (printWin) {
-        const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-          .map(el => el.outerHTML)
-          .join('\n');
-        
-        printWin.document.open();
-        printWin.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Cetak PAK Resmi F4 - ${profile.name || 'Guru PNS'}</title>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              ${styles}
-              <style>
-                @page {
-                  size: 215mm 330mm;
-                  margin: 0;
-                }
-                body {
-                  margin: 0;
-                  padding: 0;
-                  background: #ffffff;
-                  color: #000000;
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                  font-family: "Times New Roman", Times, Georgia, serif;
-                }
-                #pak-print-pages {
-                  width: 215mm !important;
-                  margin: 0 auto !important;
-                  padding: 0 !important;
-                }
-                .print-page {
-                  width: 215mm !important;
-                  height: 330mm !important;
-                  max-height: 330mm !important;
-                  box-sizing: border-box !important;
-                  padding: 12mm 15mm 10mm 15mm !important;
-                  margin: 0 auto !important;
-                  page-break-after: always !important;
-                  break-after: page !important;
-                  background: #ffffff !important;
-                  color: #000000 !important;
-                }
-                .print-page:last-child {
-                  page-break-after: auto !important;
-                  break-after: auto !important;
-                }
-                @media screen {
-                  body {
-                    background: #525659;
-                    padding: 20px 0;
-                  }
-                  .print-page {
-                    margin-bottom: 20px !important;
-                    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-                  }
-                }
-              </style>
-            </head>
-            <body>
-              <div id="pak-print-pages">
-                ${printContainer.innerHTML}
-              </div>
-              <script>
-                window.onload = function() {
-                  setTimeout(function() {
-                    window.print();
-                  }, 600);
-                };
-              </script>
-            </body>
-          </html>
-        `);
-        printWin.document.close();
-      } else {
-        window.print();
-      }
-    } catch (e) {
       window.print();
+    } catch (e) {
+      console.error("Gagal membuka dialog cetak:", e);
     }
   };
 
@@ -826,56 +751,56 @@ export default function OfficialPAKReport({
 
   // Reusable Personal Details Table
   const renderPersonalTable = () => (
-    <div className="border border-black text-[11px] text-black w-full my-2 font-serif">
-      <div className="bg-slate-100 font-bold text-center border-b border-black py-1 select-none tracking-wide text-[10px]">
+    <div className="border border-black text-[11px] print:text-[9.5px] text-black w-full my-2 print:my-1 font-serif">
+      <div className="bg-slate-100 font-bold text-center border-b border-black py-1 print:py-0.5 select-none tracking-wide text-[10px] print:text-[9px]">
         PEJABAT FUNGSIONAL YANG DINILAI
       </div>
       <table className="w-full text-left border-collapse">
         <tbody>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 w-[5%] text-center border-r border-black font-semibold align-middle">1</td>
-            <td className="py-1 px-2.5 w-[35%] border-r border-black font-semibold align-middle">NAMA</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {profile.name || "___________________________"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 w-[5%] text-center border-r border-black font-semibold align-middle">1</td>
+            <td className="py-1 print:py-0.5 px-2.5 w-[35%] border-r border-black font-semibold align-middle">NAMA</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {profile.name || "___________________________"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">2</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">NIP</td>
-            <td className="py-1 px-2.5 font-mono text-[10.5px] align-middle"> {profile.nip || "___________________________"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">2</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">NIP</td>
+            <td className="py-1 print:py-0.5 px-2.5 font-mono text-[10.5px] print:text-[9px] align-middle"> {profile.nip || "___________________________"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">3</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">NOMOR SERI KARPEG</td>
-            <td className="py-1 px-2.5 font-mono text-[10.5px] align-middle"> {profile.karpegNumber || "-"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">3</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">NOMOR SERI KARPEG</td>
+            <td className="py-1 print:py-0.5 px-2.5 font-mono text-[10.5px] print:text-[9px] align-middle"> {profile.karpegNumber || "-"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">4</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">TEMPAT/TGL. LAHIR</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {profile.birthPlaceDate || "___________________________"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">4</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">TEMPAT/TGL. LAHIR</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {profile.birthPlaceDate || "___________________________"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">5</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">JENIS KELAMIN</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {profile.gender || "Laki-Laki"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">5</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">JENIS KELAMIN</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {profile.gender || "Laki-Laki"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">6</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">PANGKAT/GOLONGAN RUANG TMT</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {currentDetail.pangkat} / {profile.currentGolongan} / {profile.tmtCurrentPangkat || "01-04-2024"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">6</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">PANGKAT/GOLONGAN RUANG TMT</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {currentDetail.pangkat} / {profile.currentGolongan} / {profile.tmtCurrentPangkat || "01-04-2024"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">7</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">JABATAN/TMT</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> GURU {getTeacherLevel(profile.currentGolongan).toUpperCase()} / {profile.tmtCurrentJabatan || "24-08-2023"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">7</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">JABATAN/TMT</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> GURU {getTeacherLevel(profile.currentGolongan).toUpperCase()} / {profile.tmtCurrentJabatan || "24-08-2023"}</td>
           </tr>
           <tr className="border-b border-black">
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">8</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">UNIT KERJA</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {profile.unitKerja || profile.school || "___________________________"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">8</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">UNIT KERJA</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {profile.unitKerja || profile.school || "___________________________"}</td>
           </tr>
           <tr>
-            <td className="py-1 px-2.5 text-center border-r border-black font-semibold align-middle">9</td>
-            <td className="py-1 px-2.5 border-r border-black font-semibold align-middle">INSTANSI</td>
-            <td className="py-1 px-2.5 text-[11px] align-middle"> {profile.instansiBiro || "PEMERINTAH PROVINSI JAWA BARAT"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">9</td>
+            <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">INSTANSI</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {profile.instansiBiro || "PEMERINTAH PROVINSI JAWA BARAT"}</td>
           </tr>
         </tbody>
       </table>
@@ -903,14 +828,14 @@ export default function OfficialPAKReport({
     const tteTextJabatan2 = kopSettings.tteTextJabatan2 || profile.tteTextJabatan2 || profile.pejabatPenilaiInstansi || 'PROVINSI JAWA BARAT';
 
     return (
-      <div className="pt-3 grid grid-cols-2 gap-4 text-[10px] text-black font-serif my-2 select-none leading-tight">
+      <div className="pt-3 print:pt-1 grid grid-cols-2 gap-4 print:gap-2 text-[10px] print:text-[9px] text-black font-serif my-2 print:my-1 select-none leading-tight">
         <div>
           <p className="font-semibold italic">ASLI Penetapan Angka Kredit untuk:</p>
           <p className="font-bold underline uppercase text-slate-900">{profile.name}</p>
           
-          <div className="mt-2">
+          <div className="mt-2 print:mt-1">
             <p className="font-semibold">Tembusan disampaikan kepada:</p>
-            <ol className="list-decimal pl-4 space-y-0 text-[9px]">
+            <ol className="list-decimal pl-4 space-y-0 text-[9px] print:text-[8px]">
               <li>Yth. Pimpinan Instansi Pembina Jabatan Fungsional yang bersangkutan;</li>
               <li>Yth. Kepala Badan Kepegawaian Negara/Kepala Kantor Regional III BKN;</li>
               <li>Yth. Sekretaris Daerah Provinsi Jawa Barat;</li>
@@ -920,25 +845,25 @@ export default function OfficialPAKReport({
           </div>
         </div>
 
-        <div className="pl-6 border-l border-dashed border-slate-300 flex flex-col justify-start">
-          <p className="text-black text-[10.5px] font-serif font-semibold">Ditetapkan di {profile.tempatDitetapkan || "Bandung"}</p>
-          <p className="text-black text-[10.5px] font-serif font-semibold">Pada tanggal {profile.tanggalPenetapan || "02 April 2026"}</p>
+        <div className="pl-6 print:pl-3 border-l border-dashed border-slate-300 flex flex-col justify-start">
+          <p className="text-black text-[10.5px] print:text-[9.5px] font-serif font-semibold">Ditetapkan di {profile.tempatDitetapkan || "Bandung"}</p>
+          <p className="text-black text-[10.5px] print:text-[9.5px] font-serif font-semibold">Pada tanggal {profile.tanggalPenetapan || "02 April 2026"}</p>
           
-          <div className="mt-2 text-[10.5px] font-serif leading-tight">
+          <div className="mt-2 print:mt-1 text-[10.5px] print:text-[9.5px] font-serif leading-tight">
             <p className="font-bold">Pejabat Penilai Kinerja</p>
-            <p className="font-bold uppercase text-[9.5px]">{titlePrefix}{profile.pejabatPenilaiTitle || "KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII"}</p>
-            <p className="font-bold uppercase text-[9.5px]">{profile.pejabatPenilaiInstansi || "PROVINSI JAWA BARAT"}</p>
+            <p className="font-bold uppercase text-[9.5px] print:text-[8.5px]">{titlePrefix}{profile.pejabatPenilaiTitle || "KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII"}</p>
+            <p className="font-bold uppercase text-[9.5px] print:text-[8.5px]">{profile.pejabatPenilaiInstansi || "PROVINSI JAWA BARAT"}</p>
           </div>
 
           {signatureType === 'ttd_basah' ? (
             /* WET SIGNATURE BLOCK (TANDA TANGAN BASAH / SCAN) */
             <div className="mt-1 w-full max-w-[350px]">
-              <div className="flex items-center justify-center my-0.5" style={{ minHeight: `${Math.min(ttdBasahHeight, 70)}px` }}>
+              <div className="flex items-center justify-center my-0.5 print:my-0" style={{ minHeight: `${Math.min(ttdBasahHeight, 70)}px` }}>
                 {ttdBasahType === 'upload' && ttdBasahImage ? (
                   <img 
                     src={ttdBasahImage} 
                     alt="Scan TTD Basah & Stempel" 
-                    className="max-h-20 max-w-[220px] object-contain my-0.5"
+                    className="max-h-20 print:max-h-12 max-w-[220px] object-contain my-0.5"
                     style={{ display: 'block' }}
                   />
                 ) : (
@@ -948,14 +873,14 @@ export default function OfficialPAKReport({
                 )}
               </div>
 
-              <div className="text-[10.5px] font-serif leading-tight mt-1">
+              <div className="text-[10.5px] print:text-[9.5px] font-serif leading-tight mt-1">
                 <p className="font-bold text-black uppercase underline decoration-1">
                   {profile.pejabatPenilaiNama || "DWI YANTI ESTRININGRUM, S.Sos., M.Pd."}
                 </p>
-                <p className="font-bold text-black uppercase text-[9.5px]">
+                <p className="font-bold text-black uppercase text-[9.5px] print:text-[8.5px]">
                   NIP. {profile.pejabatPenilaiNip || "19730512 199803 2 004"}
                 </p>
-                <p className="text-black text-[9.5px]">
+                <p className="text-black text-[9.5px] print:text-[8.5px]">
                   {profile.pejabatPenilaiGolongan || "Pembina Tk.I"}
                   {!(profile.pejabatPenilaiGolongan || "Pembina Tk.I").endsWith('.') ? '.' : ''}
                 </p>
@@ -963,38 +888,38 @@ export default function OfficialPAKReport({
             </div>
           ) : (
             /* DISPUSIPDA / BSrE Electronic Signature Specimen Box (TTE) */
-            <div className="mt-2 border-[1.5px] border-black rounded-xl p-2.5 flex items-center gap-3 bg-white w-full max-w-[350px]">
+            <div className="mt-2 print:mt-1 border-[1.5px] border-black rounded-xl p-2.5 print:p-1.5 flex items-center gap-3 print:gap-2 bg-white w-full max-w-[350px]">
               {/* Left Column: TTD Electronic Logo (Enlarged) */}
-              <div className="flex-shrink-0 w-14 h-14 flex items-center justify-center">
+              <div className="flex-shrink-0 w-14 h-14 print:w-11 print:h-11 flex items-center justify-center">
                 {tteLogoType === 'upload' && tteLogoBase64 ? (
                   <img 
                     src={tteLogoBase64} 
                     alt="TTE Logo" 
-                    className="w-14 h-14 object-contain"
+                    className="w-14 h-14 print:w-11 print:h-11 object-contain"
                     style={{ display: 'block', maxHeight: '100%', maxWidth: '100%' }}
                   />
                 ) : tteLogoType === 'url' && tteLogoUrl ? (
                   <img 
                     src={tteLogoUrl} 
                     alt="TTE Logo" 
-                    className="w-14 h-14 object-contain"
+                    className="w-14 h-14 print:w-11 print:h-11 object-contain"
                     referrerPolicy="no-referrer"
                     style={{ display: 'block', maxHeight: '100%', maxWidth: '100%' }}
                   />
                 ) : (
-                  <SpecimenSVG className="w-14 h-14 shrink-0 select-none" />
+                  <SpecimenSVG className="w-14 h-14 print:w-11 print:h-11 shrink-0 select-none" />
                 )}
               </div>
 
               {/* Right Column: Dynamic Specimen Text */}
-              <div className="text-[9.5px] leading-tight font-sans text-black select-none">
-                <p className="text-slate-800 italic text-[9px] mb-0.5">{tteTextHeader}</p>
-                <p className="font-bold text-black uppercase text-[9.5px] tracking-tight">{tteTextJabatan1}</p>
-                <p className="font-bold text-black uppercase text-[9.5px] tracking-tight">{tteTextJabatan2}</p>
+              <div className="text-[9.5px] print:text-[8.5px] leading-tight font-sans text-black select-none">
+                <p className="text-slate-800 italic text-[9px] print:text-[8px] mb-0.5">{tteTextHeader}</p>
+                <p className="font-bold text-black uppercase text-[9.5px] print:text-[8.5px] tracking-tight">{tteTextJabatan1}</p>
+                <p className="font-bold text-black uppercase text-[9.5px] print:text-[8.5px] tracking-tight">{tteTextJabatan2}</p>
                 
-                <div className="mt-2 font-sans text-[9.5px]">
+                <div className="mt-2 print:mt-1 font-sans text-[9.5px] print:text-[8.5px]">
                   <p className="font-bold text-black uppercase">{profile.pejabatPenilaiNama || "DWI YANTI ESTRININGRUM, S.Sos., M.Pd."}</p>
-                  <p className="text-slate-800 text-[9px]">
+                  <p className="text-slate-800 text-[9px] print:text-[8px]">
                     {profile.pejabatPenilaiGolongan || "Pembina Tk.I"}
                     {!(profile.pejabatPenilaiGolongan || "Pembina Tk.I").endsWith('.') ? '.' : ''}
                   </p>
@@ -1641,8 +1566,8 @@ export default function OfficialPAKReport({
           {/* PAGE 1 CANVAS */}
           <div 
             id="pak-page-1"
-            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[16mm] pb-[14mm] select-text border border-slate-200 rounded-xl shadow-md print:shadow-none print:border-none print:p-0 print:mx-0 print:max-w-none print:min-h-0 min-h-[330mm] flex flex-col justify-between page-break"
-            style={{ boxSizing: "border-box", borderColor: "#f1f5f9", boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)", backgroundColor: "#ffffff", color: "#000000" }}
+            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[14mm] pb-[12mm] select-text border border-slate-200 rounded-xl shadow-md min-h-[330mm] flex flex-col justify-between"
+            style={{ boxSizing: "border-box", backgroundColor: "#ffffff", color: "#000000" }}
           >
             {renderGovHeader()}
             
@@ -1709,8 +1634,8 @@ export default function OfficialPAKReport({
           {/* PAGE 2 CANVAS */}
           <div 
             id="pak-page-2"
-            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[16mm] pb-[14mm] select-text border border-slate-200 rounded-xl shadow-md print:shadow-none print:border-none print:p-0 print:mx-0 print:max-w-none print:min-h-0 min-h-[330mm] flex flex-col justify-between page-break page-break-before"
-            style={{ boxSizing: "border-box", borderColor: "#f1f5f9", boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)", backgroundColor: "#ffffff", color: "#000000" }}
+            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[14mm] pb-[12mm] select-text border border-slate-200 rounded-xl shadow-md min-h-[330mm] flex flex-col justify-between"
+            style={{ boxSizing: "border-box", backgroundColor: "#ffffff", color: "#000000" }}
           >
             {renderGovHeader()}
             
@@ -1727,42 +1652,42 @@ export default function OfficialPAKReport({
             {renderPersonalTable()}
 
             {/* Page 2 centerpiece table: Accumulation over years */}
-            <div className="text-[11px] text-black w-full border border-black font-serif my-4 leading-normal">
-              <div className="bg-slate-100 font-bold text-center border-b border-black py-1.5 select-none tracking-wider text-[10px] uppercase">
+            <div className="text-[11px] print:text-[9.5px] text-black w-full border border-black font-serif my-4 print:my-1.5 leading-normal">
+              <div className="bg-slate-100 font-bold text-center border-b border-black py-1.5 print:py-0.5 select-none tracking-wider text-[10px] print:text-[9px] uppercase">
                 Hasil Penilalan Angka Kredit
               </div>
               
-              <table className="w-full text-center border-collapse text-[10px]">
+              <table className="w-full text-center border-collapse text-[10px] print:text-[9px]">
                 <thead>
-                  <tr className="bg-slate-50/50 border-b border-black font-bold select-none text-[9px] uppercase">
-                    <th className="py-2.5 px-2 border-r border-black w-[10%] align-middle">TAHUN</th>
-                    <th className="py-2.5 px-3 border-r border-black w-[25%] align-middle">PERIODIK (BULAN)</th>
-                    <th className="py-2.5 px-2 border-r border-black w-[15%] align-middle">PREDIKAT</th>
-                    <th className="py-2.5 px-2 border-r border-black w-[15%] align-middle">PROSENTASE</th>
-                    <th className="py-2.5 px-2 border-r border-black w-[15%] align-middle">Koefisien per tahun</th>
-                    <th className="py-2.5 px-3 w-[20%] align-middle">Angka Kredit yang didapat</th>
+                  <tr className="bg-slate-50/50 border-b border-black font-bold select-none text-[9px] print:text-[8px] uppercase">
+                    <th className="py-2.5 print:py-1 px-2 border-r border-black w-[10%] align-middle">TAHUN</th>
+                    <th className="py-2.5 print:py-1 px-3 border-r border-black w-[25%] align-middle">PERIODIK (BULAN)</th>
+                    <th className="py-2.5 print:py-1 px-2 border-r border-black w-[15%] align-middle">PREDIKAT</th>
+                    <th className="py-2.5 print:py-1 px-2 border-r border-black w-[15%] align-middle">PROSENTASE</th>
+                    <th className="py-2.5 print:py-1 px-2 border-r border-black w-[15%] align-middle">Koefisien per tahun</th>
+                    <th className="py-2.5 print:py-1 px-3 w-[20%] align-middle">Angka Kredit yang didapat</th>
                   </tr>
-                  <tr className="border-b border-black select-none text-[8.5px] font-mono font-bold bg-slate-100">
-                    <td className="py-1 px-2 border-r border-black align-middle">1</td>
-                    <td className="py-1 px-2 border-r border-black align-middle">2</td>
-                    <td className="py-1 px-2 border-r border-black align-middle">3</td>
-                    <td className="py-1 px-2 border-r border-black align-middle">4</td>
-                    <td className="py-1 px-2 border-r border-black align-middle">5</td>
-                    <td className="py-1 px-2 align-middle">6</td>
+                  <tr className="border-b border-black select-none text-[8.5px] print:text-[8px] font-mono font-bold bg-slate-100">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black align-middle">1</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black align-middle">2</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black align-middle">3</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black align-middle">4</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black align-middle">5</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle">6</td>
                   </tr>
                 </thead>
                 <tbody>
                   {/* PAK Integrasi 2022 Conditional Row */}
                   {(profile.akIntegrasi2022 || 0) > 0 && (
                     <tr className="border-b border-black font-serif font-medium">
-                      <td className="py-2 px-2 border-r border-black font-mono font-bold align-middle">2022</td>
-                      <td className="py-2 px-3 border-r border-black leading-tight text-[9px] align-middle text-left">
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono font-bold align-middle">2022</td>
+                      <td className="py-2 print:py-1 px-3 border-r border-black leading-tight text-[9px] print:text-[8px] align-middle text-left">
                         s.d. Desember
                       </td>
-                      <td className="py-2 px-2 border-r border-black font-sans font-medium text-center text-slate-500 align-middle">-</td>
-                      <td className="py-2 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
-                      <td className="py-2 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
-                      <td className="py-2 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] align-middle">
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-sans font-medium text-center text-slate-500 align-middle">-</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
+                      <td className="py-2 print:py-1 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] print:text-[9.5px] align-middle">
                         {(profile.akIntegrasi2022 || 0).toFixed(3).replace('.', ',')}
                       </td>
                     </tr>
@@ -1770,14 +1695,14 @@ export default function OfficialPAKReport({
 
                   {sortedEvaluationsChrono.map((item, index) => (
                     <tr key={index} className="border-b border-black font-serif font-medium">
-                      <td className="py-2 px-2 border-r border-black font-mono font-bold align-middle">{item.year}</td>
-                      <td className="py-2 px-3 border-r border-black leading-tight text-[9px] align-middle text-left">
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono font-bold align-middle">{item.year}</td>
+                      <td className="py-2 print:py-1 px-3 border-r border-black leading-tight text-[9px] print:text-[8px] align-middle text-left">
                         {item.notes || (item.period === 'Tahunan' ? 'Januari s.d Desember' : item.period)}
                       </td>
-                      <td className="py-2 px-2 border-r border-black font-bold align-middle">{item.rating}</td>
-                      <td className="py-2 px-2 border-r border-black font-mono align-middle">{(item.multiplier * 100).toFixed(0)}%</td>
-                      <td className="py-2 px-2 border-r border-black font-mono align-middle">{item.coefficient}</td>
-                      <td className="py-2 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] align-middle">
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-bold align-middle">{item.rating}</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{(item.multiplier * 100).toFixed(0)}%</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{item.coefficient}</td>
+                      <td className="py-2 print:py-1 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] print:text-[9.5px] align-middle">
                         {item.creditEarned.toFixed(3).replace('.', ',')}
                       </td>
                     </tr>
@@ -1785,18 +1710,18 @@ export default function OfficialPAKReport({
                   
                   {sortedEvaluationsChrono.length === 0 && (
                     <tr className="border-b border-black">
-                      <td colSpan={6} className="py-6 text-center text-slate-400 font-sans italic align-middle">
+                      <td colSpan={6} className="py-6 print:py-3 text-center text-slate-400 font-sans italic align-middle">
                         Belum ada evaluasi SKP tercatat untuk riwayat ini.
                       </td>
                     </tr>
                   )}
 
                   {/* Total merged row */}
-                  <tr className="bg-slate-100 font-bold font-serif text-[10px]">
-                    <td className="py-2.5 px-3 border-r border-black uppercase text-left pl-4 align-middle" colSpan={5}>
+                  <tr className="bg-slate-100 font-bold font-serif text-[10px] print:text-[9px]">
+                    <td className="py-2.5 print:py-1 px-3 border-r border-black uppercase text-left pl-4 align-middle" colSpan={5}>
                       JUMLAH ANGKA KREDIT YANG DIPEROLEH
                     </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-black pr-4 text-[11.5px] bg-emerald-50/20 text-emerald-950 align-middle">
+                    <td className="py-2.5 print:py-1 px-3 text-right font-mono font-black pr-4 text-[11.5px] print:text-[10px] bg-emerald-50/20 text-emerald-950 align-middle">
                       {totalKonversi.toFixed(3).replace('.', ',')}
                     </td>
                   </tr>
@@ -1813,8 +1738,8 @@ export default function OfficialPAKReport({
           {/* PAGE 3 CANVAS */}
           <div 
             id="pak-page-3"
-            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[16mm] pb-[14mm] select-text border border-slate-200 rounded-xl shadow-md print:shadow-none print:border-none print:p-0 print:mx-0 print:max-w-none print:min-h-0 min-h-[330mm] flex flex-col justify-between page-break page-break-before"
-            style={{ boxSizing: "border-box", borderColor: "#f1f5f9", boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)", backgroundColor: "#ffffff", color: "#000000" }}
+            className="print-page bg-white font-serif w-full max-w-[215mm] mx-auto px-[15mm] pt-[14mm] pb-[12mm] select-text border border-slate-200 rounded-xl shadow-md min-h-[330mm] flex flex-col justify-between"
+            style={{ boxSizing: "border-box", backgroundColor: "#ffffff", color: "#000000" }}
           >
             {renderGovHeader()}
             
@@ -1832,91 +1757,91 @@ export default function OfficialPAKReport({
             {renderPersonalTable()}
 
             {/* Section II: "PENETAPAN ANGKA KREDIT" table */}
-            <div className="text-[11px] text-black w-full border border-black font-serif my-2 leading-normal">
-              <table className="w-full border-collapse text-[10px]">
+            <div className="text-[11px] print:text-[9.5px] text-black w-full border border-black font-serif my-2 print:my-1 leading-normal">
+              <table className="w-full border-collapse text-[10px] print:text-[9px]">
                 <thead>
-                  <tr className="bg-slate-100 font-bold border-b border-black text-center text-[9px] uppercase">
-                    <th className="py-1.5 px-2 w-[4%] border-r border-black select-none align-middle">II</th>
-                    <th className="py-1.5 px-3 w-[36%] border-r border-black text-left align-middle">PENETAPAN ANGKA KREDIT</th>
-                    <th className="py-1.5 px-2 w-[15%] border-r border-black align-middle">LAMA</th>
-                    <th className="py-1.5 px-2 w-[15%] border-r border-black align-middle">BARU</th>
-                    <th className="py-1.5 px-2 w-[15%] border-r border-black align-middle">JUMLAH</th>
-                    <th className="py-1.5 px-2 w-[15%] align-middle">KETERANGAN</th>
+                  <tr className="bg-slate-100 font-bold border-b border-black text-center text-[9px] print:text-[8px] uppercase">
+                    <th className="py-1.5 print:py-0.5 px-2 w-[4%] border-r border-black select-none align-middle">II</th>
+                    <th className="py-1.5 print:py-0.5 px-3 w-[36%] border-r border-black text-left align-middle">PENETAPAN ANGKA KREDIT</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[15%] border-r border-black align-middle">LAMA</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[15%] border-r border-black align-middle">BARU</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[15%] border-r border-black align-middle">JUMLAH</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[15%] align-middle">KETERANGAN</th>
                   </tr>
-                  <tr className="border-b border-black select-none text-[8px] font-mono font-bold bg-slate-150 text-center">
-                    <td className="py-1 px-1 border-r border-black align-middle">1</td>
-                    <td className="py-1 px-2 border-r border-black text-left align-middle">2</td>
-                    <td className="py-1 px-1 border-r border-black align-middle">3</td>
-                    <td className="py-1 px-1 border-r border-black align-middle">4</td>
-                    <td className="py-1 px-1 border-r border-black align-middle">5</td>
-                    <td className="py-1 px-1 align-middle">6</td>
+                  <tr className="border-b border-black select-none text-[8px] print:text-[7.5px] font-mono font-bold bg-slate-150 text-center">
+                    <td className="py-1 print:py-0.5 px-1 border-r border-black align-middle">1</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-left align-middle">2</td>
+                    <td className="py-1 print:py-0.5 px-1 border-r border-black align-middle">3</td>
+                    <td className="py-1 print:py-0.5 px-1 border-r border-black align-middle">4</td>
+                    <td className="py-1 print:py-0.5 px-1 border-r border-black align-middle">5</td>
+                    <td className="py-1 print:py-0.5 px-1 align-middle">6</td>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b border-black text-slate-500 font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">1</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] text-slate-800 align-middle">AK DASAR YANG DIBERIKAN</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black text-slate-500 font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">1</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK DASAR YANG DIBERIKAN</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
-                  <tr className="border-b border-black text-slate-500 font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">2</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] text-slate-800 align-middle">AK JF LAMA</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black text-slate-500 font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">2</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK JF LAMA</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
-                  <tr className="border-b border-black text-slate-500 font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">3</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] text-slate-800 align-middle">AK PENYESUAIAN / PENYETARAAN</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black text-slate-500 font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">3</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK PENYESUAIAN / PENYETARAAN</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
-                  <tr className="border-b border-black font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center text-slate-500 align-middle">4</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] font-bold text-slate-800 align-middle">AK KONVERSI</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 text-[11px] align-middle">{konversiLama.toFixed(3).replace('.', ',')}</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] align-middle">{konversiBaru.toFixed(3).replace('.', ',')}</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 font-bold text-[11px] align-middle">{konversiJumlah.toFixed(3).replace('.', ',')}</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center text-slate-500 align-middle">4</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] font-bold text-slate-800 align-middle">AK KONVERSI</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{konversiLama.toFixed(3).replace('.', ',')}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{konversiBaru.toFixed(3).replace('.', ',')}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-bold text-[11px] print:text-[9px] align-middle">{konversiJumlah.toFixed(3).replace('.', ',')}</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
-                  <tr className="border-b border-black font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center text-slate-500 align-middle">5</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] text-slate-800 align-middle">AK YANG DIPEROLEH DARI PENINGKATAN PENDIDIKAN</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 text-[11px] align-middle">{pendidikanLama > 0 ? pendidikanLama.toFixed(3).replace('.', ',') : "-"}</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] align-middle">{pendidikanBaru > 0 ? pendidikanBaru.toFixed(3).replace('.', ',') : "-"}</td>
-                    <td className="py-1 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] align-middle">{pendidikanJumlah > 0 ? pendidikanJumlah.toFixed(3).replace('.', ',') : "-"}</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center text-slate-500 align-middle">5</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK YANG DIPEROLEH DARI PENINGKATAN PENDIDIKAN</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{pendidikanLama > 0 ? pendidikanLama.toFixed(3).replace('.', ',') : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanBaru > 0 ? pendidikanBaru.toFixed(3).replace('.', ',') : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanJumlah > 0 ? pendidikanJumlah.toFixed(3).replace('.', ',') : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
-                  <tr className="border-b border-black text-slate-500 font-mono text-[11px]">
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">6</td>
-                    <td className="py-1 px-3 border-r border-black font-serif text-[11px] text-slate-800 align-middle">AK YANG DIPEROLEH DARI KENAIKAN PANGKAT LUAR BIASA</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 border-r border-black text-center align-middle">-</td>
-                    <td className="py-1 px-2 align-middle"></td>
+                  <tr className="border-b border-black text-slate-500 font-mono text-[11px] print:text-[9px]">
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">6</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK YANG DIPEROLEH DARI KENAIKAN PANGKAT LUAR BIASA</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 border-r border-black text-center align-middle">-</td>
+                    <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
 
                   {/* Cumulatives Grand Total */}
-                  <tr className="bg-slate-100 font-bold font-serif text-[10px] uppercase">
-                    <td className="py-2 px-3 border-r border-black text-left pl-6 align-middle" colSpan={2}>
+                  <tr className="bg-slate-100 font-bold font-serif text-[10px] print:text-[9px] uppercase">
+                    <td className="py-2 print:py-1 px-3 border-r border-black text-left pl-6 align-middle" colSpan={2}>
                       JUMLAH ANGKA KREDIT KUMULATIF
                     </td>
-                    <td className="py-2 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] align-middle">
+                    <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
                       {accumLama.toFixed(3).replace('.', ',')}
                     </td>
-                    <td className="py-2 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] align-middle">
+                    <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
                       {accumBaru.toFixed(3).replace('.', ',')}
                     </td>
-                    <td className="py-2 px-3 border-r border-black text-right pr-3 font-mono font-black text-[12px] bg-emerald-50/20 text-emerald-950 align-middle">
+                    <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-black text-[12px] print:text-[10.5px] bg-emerald-50/20 text-emerald-950 align-middle">
                       {accumJumlah.toFixed(3).replace('.', ',')}
                     </td>
-                    <td className="py-2 px-2 align-middle"></td>
+                    <td className="py-2 print:py-1 px-2 align-middle"></td>
                   </tr>
 
                 </tbody>
@@ -1924,54 +1849,54 @@ export default function OfficialPAKReport({
             </div>
 
             {/* Lower Grid Panel: Minimun & Deficit Calculation block */}
-            <div className="border border-black text-[10px] text-black w-full font-serif my-1.5 leading-tight font-medium">
+            <div className="border border-black text-[10px] print:text-[9px] text-black w-full font-serif my-1.5 print:my-0.5 leading-tight font-medium">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-100 font-bold border-b border-black text-center text-[9px]">
-                    <th className="py-1.5 px-2.5 w-[46%] border-r border-black uppercase text-left align-middle">KETERANGAN</th>
-                    <th className="py-1.5 px-2 w-[27%] border-r border-black uppercase align-middle">PANGKAT</th>
-                    <th className="py-1.5 px-2 w-[27%] uppercase align-middle">JENJANG JABATAN</th>
+                  <tr className="bg-slate-100 font-bold border-b border-black text-center text-[9px] print:text-[8px]">
+                    <th className="py-1.5 print:py-0.5 px-2.5 w-[46%] border-r border-black uppercase text-left align-middle">KETERANGAN</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[27%] border-r border-black uppercase align-middle">PANGKAT</th>
+                    <th className="py-1.5 print:py-0.5 px-2 w-[27%] uppercase align-middle">JENJANG JABATAN</th>
                   </tr>
                 </thead>
                 <tbody>
                    <tr className="border-b border-black text-center">
-                    <td className="py-1.5 px-2.5 text-left font-semibold border-r border-black align-middle">ANGKA KREDIT MINIMAL YANG HARUS DIPENUHI UNTUK KENAIKAN PANGKAT/ JENJANG</td>
-                    <td className="py-1.5 px-2 border-r border-black font-mono font-bold text-[10.5px] align-middle">
+                    <td className="py-1.5 print:py-0.5 px-2.5 text-left font-semibold border-r border-black align-middle">ANGKA KREDIT MINIMAL YANG HARUS DIPENUHI UNTUK KENAIKAN PANGKAT/ JENJANG</td>
+                    <td className="py-1.5 print:py-0.5 px-2 border-r border-black font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
                       {minimalPangkat > 0 ? minimalPangkat.toFixed(3).replace('.', ',') : "-"}
                     </td>
-                    <td className="py-1.5 px-2 font-mono font-bold text-[10.5px] align-middle">
+                    <td className="py-1.5 print:py-0.5 px-2 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
                       {minimalJenjang > 0 ? minimalJenjang.toFixed(3).replace('.', ',') : "-"}
                     </td>
                   </tr>
                   <tr className="border-b border-black text-center">
-                    <td className="py-1.5 px-2.5 text-left font-semibold border-r border-black uppercase text-[9px] align-middle">
+                    <td className="py-1.5 print:py-0.5 px-2.5 text-left font-semibold border-r border-black uppercase text-[9px] print:text-[8px] align-middle">
                       {minimalPangkat > 0 && isPangkatSurplus
                         ? "KELEBIHAN ANGKA KREDIT YANG DICAPAI UNTUK KENAIKAN PANGKAT"
                         : "KEKURANGAN ANGKA KREDIT YANG HARUS DICAPAI UNTUK KENAIKAN PANGKAT"}
                     </td>
-                    <td className={`py-1.5 px-2 border-r border-black font-mono font-extrabold text-[10.5px] align-middle ${
+                    <td className={`py-1.5 print:py-0.5 px-2 border-r border-black font-mono font-extrabold text-[10.5px] print:text-[9.5px] align-middle ${
                       isPangkatSurplus ? "bg-emerald-50/10 text-emerald-900" : "bg-amber-55/10 text-amber-900"
                     }`}>
                       {minimalPangkat > 0 ? pangkatDiffValue.toFixed(3).replace('.', ',') : "-"}
                     </td>
-                    <td className="py-1.5 px-2 font-mono font-semibold text-slate-400 align-middle">-</td>
+                    <td className="py-1.5 print:py-0.5 px-2 font-mono font-semibold text-slate-400 align-middle">-</td>
                   </tr>
                   <tr className="border-b border-black text-center">
-                    <td className="py-1.5 px-2.5 text-left font-semibold border-r border-black uppercase text-[9px] align-middle">
+                    <td className="py-1.5 print:py-0.5 px-2.5 text-left font-semibold border-r border-black uppercase text-[9px] print:text-[8px] align-middle">
                        {minimalJenjang > 0 && isJenjangSurplus 
                         ? "KELEBIHAN ANGKA KREDIT YANG DICAPAI UNTUK KENAIKAN JENJANG" 
                         : "KEKURANGAN ANGKA KREDIT YANG HARUS DICAPAI UNTUK KENAIKAN JENJANG"}
                     </td>
-                    <td className="py-1.5 px-2 font-mono font-semibold text-slate-400 align-middle">-</td>
-                    <td className={`py-1.5 px-2 font-mono font-extrabold text-[10.5px] align-middle ${
+                    <td className="py-1.5 print:py-0.5 px-2 font-mono font-semibold text-slate-400 align-middle">-</td>
+                    <td className={`py-1.5 print:py-0.5 px-2 font-mono font-extrabold text-[10.5px] print:text-[9.5px] align-middle ${
                       isJenjangSurplus ? "bg-emerald-50/10 text-emerald-900" : "bg-amber-55/10 text-amber-900"
                     }`}>
                       {minimalJenjang > 0 ? jenjangDiffValue.toFixed(3).replace('.', ',') : "-"}
                     </td>
                   </tr>
                   {/* Eligibility final visual status line inside Page 3 table */}
-                  <tr className="bg-slate-50 uppercase text-[9.5px] font-bold">
-                    <td className="py-2 px-3 text-left font-serif leading-snug align-middle" colSpan={3}>
+                  <tr className="bg-slate-50 uppercase text-[9.5px] print:text-[8.5px] font-bold">
+                    <td className="py-2 print:py-1 px-3 text-left font-serif leading-snug align-middle" colSpan={3}>
                       {recommendationText}
                     </td>
                   </tr>

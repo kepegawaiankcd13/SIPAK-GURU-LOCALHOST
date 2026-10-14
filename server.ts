@@ -2,9 +2,14 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { getDbPool, checkDbConnection, getDatabaseSqlContent, autoInitializeMysql } from "./src/server/db";
 import { readLocalDb, writeLocalDb, type LocalDbData } from "./src/server/fileDb";
+
+const currentDir = typeof __dirname !== "undefined"
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
 
 async function startServer() {
   const app = express();
@@ -708,41 +713,75 @@ async function startServer() {
   });
 
   // Serve Vite in development, static files in production
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        watch: {
-          ignored: [
-            "**/data/**",
-            "**/dist/**",
-            "**/.git/**",
-            "**/*.sql",
-            "**/*.log"
-          ]
-        }
-      },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-    console.log("Vite development middleware loaded.");
+  const isCompiledBundle = fs.existsSync(path.join(currentDir, "index.html"));
+  if (process.env.NODE_ENV !== "production" && !isCompiledBundle) {
+    try {
+      const vite = await createViteServer({
+        server: {
+          middlewareMode: true,
+          watch: {
+            ignored: [
+              "**/data/**",
+              "**/dist/**",
+              "**/.git/**",
+              "**/*.sql",
+              "**/*.log"
+            ]
+          }
+        },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite development middleware loaded.");
+    } catch (viteErr: any) {
+      console.warn("Vite dev middleware initialization error, serving static assets:", viteErr?.message || viteErr);
+      serveStaticAssets(app);
+    }
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath, {
-      setHeaders: (res) => {
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-      }
-    }));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-    console.log("Serving compiled production static assets with CORS enabled.");
+    serveStaticAssets(app);
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`SIPAK-GURU Server running on http://0.0.0.0:${PORT} (MySQL XAMPP Database mode)`);
+  const rawPort = process.env.PORT;
+  if (rawPort && isNaN(Number(rawPort))) {
+    // Phusion Passenger / cPanel Unix domain socket
+    app.listen(rawPort, () => {
+      console.log(`SIPAK-GURU Server running on socket ${rawPort} (Phusion Passenger mode)`);
+    });
+  } else {
+    const portNum = Number(rawPort) || 3000;
+    app.listen(portNum, "0.0.0.0", () => {
+      console.log(`SIPAK-GURU Server running on http://0.0.0.0:${portNum}`);
+    });
+  }
+}
+
+function serveStaticAssets(app: express.Express) {
+  let distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(path.join(currentDir, "index.html"))) {
+    distPath = currentDir;
+  } else if (fs.existsSync(path.join(currentDir, "../dist", "index.html"))) {
+    distPath = path.resolve(currentDir, "../dist");
+  } else if (fs.existsSync(path.join(process.cwd(), "dist", "index.html"))) {
+    distPath = path.join(process.cwd(), "dist");
+  }
+
+  app.use(express.static(distPath, {
+    setHeaders: (res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    }
+  }));
+
+  app.get("*", (req, res) => {
+    const indexPath = path.join(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send("SIPAK-GURU Application: dist/index.html not found. Please run 'npm run build'.");
+    }
   });
+
+  console.log(`Serving compiled production static assets from ${distPath} with CORS enabled.`);
 }
 
 startServer().catch((err) => {

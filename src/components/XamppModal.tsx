@@ -39,7 +39,7 @@ export default function XamppModal({ isOpen, onClose }: XamppModalProps) {
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<boolean>(false);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'guide' | 'tables' | 'config'>('guide');
+  const [activeTab, setActiveTab] = useState<'guide' | 'tables' | 'config' | 'cpanel'>('cpanel');
 
   const checkStatus = async () => {
     setLoadingStatus(true);
@@ -206,6 +206,16 @@ export default function XamppModal({ isOpen, onClose }: XamppModalProps) {
               1. Langkah XAMPP di Mac
             </button>
             <button
+              onClick={() => setActiveTab('cpanel')}
+              className={`pb-2.5 px-4 cursor-pointer border-b-2 transition-colors flex items-center gap-1.5 ${
+                activeTab === 'cpanel'
+                  ? 'border-indigo-600 text-indigo-600 font-black'
+                  : 'border-transparent text-slate-400 hover:text-slate-700'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5" /> 2. Upload ke cPanel Hosting
+            </button>
+            <button
               onClick={() => setActiveTab('tables')}
               className={`pb-2.5 px-4 cursor-pointer border-b-2 transition-colors ${
                 activeTab === 'tables'
@@ -213,7 +223,7 @@ export default function XamppModal({ isOpen, onClose }: XamppModalProps) {
                   : 'border-transparent text-slate-400 hover:text-slate-700'
               }`}
             >
-              2. Daftar Tabel & Struktur (.sql)
+              3. Daftar Tabel & Struktur (.sql)
             </button>
             <button
               onClick={() => setActiveTab('config')}
@@ -223,7 +233,7 @@ export default function XamppModal({ isOpen, onClose }: XamppModalProps) {
                   : 'border-transparent text-slate-400 hover:text-slate-700'
               }`}
             >
-              3. Perintah Terminal Mac & .env
+              4. Perintah Terminal Mac & .env
             </button>
           </div>
 
@@ -278,6 +288,125 @@ export default function XamppModal({ isOpen, onClose }: XamppModalProps) {
                     <span className="text-slate-400 block text-[9px] uppercase font-sans font-bold">Operator SMAN 1 Ciamis:</span>
                     User: <strong className="text-slate-900">sman1ciamis</strong> | Pass: <strong className="text-slate-900">sman1ciamis123</strong>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab cPanel Hosting */}
+          {activeTab === 'cpanel' && (
+            <div className="space-y-4 text-xs">
+              <div className="bg-indigo-50/60 border border-indigo-200 rounded-2xl p-4 space-y-3">
+                <h4 className="font-black text-indigo-950 uppercase flex items-center gap-2 text-xs">
+                  <Server className="w-4 h-4 text-indigo-600" /> Panduan Lengkap Upload & Setting ke cPanel Hosting:
+                </h4>
+                <p className="text-slate-600 font-medium leading-relaxed">
+                  Semua file proyek sudah dioptimasi khusus untuk <strong>Phusion Passenger / cPanel NodeJS Selector</strong> dengan file startup <code className="font-mono text-indigo-700 bg-white px-1.5 py-0.5 rounded border border-indigo-200 font-bold">app.js</code> dan fallback bundle <code className="font-mono text-indigo-700 bg-white px-1.5 py-0.5 rounded border border-indigo-200 font-bold">dist/server.cjs</code>.
+                </p>
+
+                <div className="space-y-3 divide-y divide-slate-200/80">
+                  
+                  {/* Step 1: Database */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</span>
+                      Buat Database & User di cPanel:
+                    </div>
+                    <ul className="text-slate-600 pl-7 space-y-1 list-disc">
+                      <li>Buka cPanel ➜ Masuk ke menu <strong>MySQL Databases</strong> (atau <em>MySQL Database Wizard</em>).</li>
+                      <li>Buat database baru (misal: <code className="font-mono text-slate-800">kcdxiii_sipak</code>).</li>
+                      <li>Buat user database & password baru (misal: <code className="font-mono text-slate-800">kcdxiii_sipakuser</code>).</li>
+                      <li>Tambahkan user tersebut ke database dengan mencentang <strong>ALL PRIVILEGES</strong>, lalu klik <em>Make Changes</em>.</li>
+                    </ul>
+                  </div>
+
+                  {/* Step 2: Import SQL */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">2</span>
+                      Import database.sql di phpMyAdmin cPanel:
+                    </div>
+                    <ul className="text-slate-600 pl-7 space-y-1 list-disc">
+                      <li>Buka menu <strong>phpMyAdmin</strong> di cPanel.</li>
+                      <li><strong className="text-amber-800">PENTING:</strong> Klik nama database Anda di panel sebelah kiri terlebih dahulu!</li>
+                      <li>Klik tab <strong>Import</strong> di bagian atas.</li>
+                      <li>Klik tombol <strong>Choose File</strong> dan pilih file <code className="font-mono text-indigo-700 font-bold">database.sql</code> (klik tombol unduh di atas jika belum ada).</li>
+                      <li>Klik tombol <strong>Import / Kirim</strong> di bagian bawah (seluruh 6 tabel & akun admin akan otomatis terisi).</li>
+                    </ul>
+                  </div>
+
+                  {/* Step 3: Upload files */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">3</span>
+                      Upload & Ekstrak File di File Manager:
+                    </div>
+                    <ul className="text-slate-600 pl-7 space-y-1 list-disc">
+                      <li>Buka <strong>File Manager</strong> di cPanel.</li>
+                      <li>Upload file zip proyek ke folder root Anda (misal ke <code className="font-mono text-slate-800">public_html</code> atau folder baru <code className="font-mono text-slate-800">sipak</code>).</li>
+                      <li>Klik kanan file zip tersebut ➜ Pilih <strong>Extract</strong>.</li>
+                      <li>Pastikan folder <code className="font-mono text-slate-800">dist</code> dan file <code className="font-mono text-slate-800">app.js</code> sudah berada di dalam folder tersebut.</li>
+                    </ul>
+                  </div>
+
+                  {/* Step 4: Setup Node.js App */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">4</span>
+                      Konfigurasi "Setup Node.js App" di cPanel:
+                    </div>
+                    <ul className="text-slate-600 pl-7 space-y-1 list-disc">
+                      <li>Buka menu <strong>Setup Node.js App</strong> di cPanel.</li>
+                      <li>Pilih <strong>Node.js Version</strong>: <strong>20.x</strong> atau <strong>22.x</strong>.</li>
+                      <li>Ubah <strong>Application mode</strong> menjadi: <strong>Production</strong>.</li>
+                      <li>Isi <strong>Application root</strong>: nama folder tempat Anda mengekstrak file (contoh: <code className="font-mono text-slate-800">public_html</code> atau <code className="font-mono text-slate-800">sipak</code>).</li>
+                      <li>Isi <strong>Application startup file</strong>: <code className="font-mono font-bold text-indigo-700">app.js</code> (atau <code className="font-mono font-bold text-indigo-700">server.js</code>).</li>
+                      <li>Klik tombol <strong>Save</strong> atau <strong>Create</strong>.</li>
+                      <li>Klik tombol <strong>Run NPM Install</strong> untuk mengunduh modul dependensi.</li>
+                    </ul>
+                  </div>
+
+                  {/* Step 5: .env */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">5</span>
+                      Buat / Edit File .env di Folder Hosting:
+                    </div>
+                    <p className="text-slate-600 pl-7">
+                      Di File Manager, buat file bernama <code className="font-mono font-bold text-slate-900">.env</code> di dalam folder proyek Anda dengan isi:
+                    </p>
+                    <div className="pl-7 relative">
+                      <pre className="p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-700">
+{`DB_HOST=localhost
+DB_PORT=3306
+DB_USER=usernamecpanel_namauser
+DB_PASSWORD=password_user_database_anda
+DB_NAME=usernamecpanel_namadatabase
+NODE_ENV=production`}
+                      </pre>
+                      <button
+                        onClick={() => copyToClipboard(`DB_HOST=localhost\nDB_PORT=3306\nDB_USER=usernamecpanel_namauser\nDB_PASSWORD=password_user_database_anda\nDB_NAME=usernamecpanel_namadatabase\nNODE_ENV=production`, "cpanel_env")}
+                        className="absolute top-2 right-2 p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        {copiedCmd === "cpanel_env" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedCmd === "cpanel_env" ? "Tersalin" : "Salin"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Step 6: Restart */}
+                  <div className="pt-2 space-y-1.5">
+                    <div className="flex items-center gap-2 text-slate-900 font-bold">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px]">6</span>
+                      Restart Aplikasi & Akses Domain:
+                    </div>
+                    <ul className="text-slate-600 pl-7 space-y-1 list-disc">
+                      <li>Kembali ke menu <strong>Setup Node.js App</strong>, klik tombol <strong>STOP</strong>, tunggu 5 detik, lalu klik <strong>RESTART</strong>.</li>
+                      <li>Buka domain Anda di browser via <strong>Mode Penyamaran / Incognito</strong> (<code className="font-mono text-indigo-700 font-bold">https://domainanda.com</code>).</li>
+                      <li className="text-emerald-700 font-bold">Aplikasi SIPAK Guru langsung tampil lancar dan terhubung dengan database MySQL cPanel!</li>
+                    </ul>
+                  </div>
+
                 </div>
               </div>
             </div>
