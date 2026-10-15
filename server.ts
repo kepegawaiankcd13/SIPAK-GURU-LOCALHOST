@@ -477,7 +477,7 @@ async function startServer() {
           tteLogoUrl = VALUES(tteLogoUrl), tteLogoBase64 = VALUES(tteLogoBase64),
           tteTextHeader = VALUES(tteTextHeader), tteTextJabatan1 = VALUES(tteTextJabatan1),
           tteTextJabatan2 = VALUES(tteTextJabatan2),
-          appLogoUrl = VALUES(appLogoUrl)
+          appLogoUrl = VALUES(appLogoUrl), loginLogoHeight = VALUES(loginLogoHeight), sidebarLogoHeight = VALUES(sidebarLogoHeight)
       `;
       await pool.query(sql, [
         k.logoType || 'svg-jabar', k.customLogoUrl || null,

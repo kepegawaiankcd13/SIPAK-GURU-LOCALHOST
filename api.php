@@ -177,6 +177,8 @@ function autoInitDb($pdo) {
                 `tteTextJabatan1` VARCHAR(255) DEFAULT 'KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII',
                 `tteTextJabatan2` VARCHAR(255) DEFAULT 'DINAS PENDIDIKAN PROVINSI JAWA BARAT',
                 `appLogoUrl` LONGTEXT NULL,
+                `loginLogoHeight` INT DEFAULT 120,
+                `sidebarLogoHeight` INT DEFAULT 64,
                 `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -198,6 +200,12 @@ function autoInitDb($pdo) {
 
         try {
             $pdo->exec("ALTER TABLE `kop_settings` ADD COLUMN `appLogoUrl` LONGTEXT NULL");
+        } catch (Exception $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `kop_settings` ADD COLUMN `loginLogoHeight` INT DEFAULT 120");
+        } catch (Exception $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `kop_settings` ADD COLUMN `sidebarLogoHeight` INT DEFAULT 64");
         } catch (Exception $e) {}
 
         // Seed users if empty
@@ -575,8 +583,8 @@ if ($route === 'settings/kop' || $route === 'mysql/settings/kop') {
                   id, logoType, customLogoUrl, row1, row2, row3, row4, row5, row6,
                   signatureType, ttdBasahType, ttdBasahImageUrl, ttdBasahImageBase64, ttdBasahHeight,
                   tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2,
-                  appLogoUrl
-                ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  appLogoUrl, loginLogoHeight, sidebarLogoHeight
+                ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                   logoType = VALUES(logoType), customLogoUrl = VALUES(customLogoUrl),
                   row1 = VALUES(row1), row2 = VALUES(row2), row3 = VALUES(row3),
@@ -587,7 +595,9 @@ if ($route === 'settings/kop' || $route === 'mysql/settings/kop') {
                   tteLogoUrl = VALUES(tteLogoUrl), tteLogoBase64 = VALUES(tteLogoBase64),
                   tteTextHeader = VALUES(tteTextHeader), tteTextJabatan1 = VALUES(tteTextJabatan1),
                   tteTextJabatan2 = VALUES(tteTextJabatan2),
-                  appLogoUrl = VALUES(appLogoUrl)";
+                  appLogoUrl = VALUES(appLogoUrl),
+                  loginLogoHeight = VALUES(loginLogoHeight),
+                  sidebarLogoHeight = VALUES(sidebarLogoHeight)";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
             $k['logoType'] ?? 'svg-jabar', $k['customLogoUrl'] ?? null,
@@ -596,7 +606,9 @@ if ($route === 'settings/kop' || $route === 'mysql/settings/kop') {
             $k['ttdBasahImageBase64'] ?? null, $k['ttdBasahHeight'] ?? 64, $k['tteLogoType'] ?? 'default',
             $k['tteLogoUrl'] ?? null, $k['tteLogoBase64'] ?? null, $k['tteTextHeader'] ?? null,
             $k['tteTextJabatan1'] ?? null, $k['tteTextJabatan2'] ?? null,
-            $k['appLogoUrl'] ?? null
+            $k['appLogoUrl'] ?? null,
+            intval($k['loginLogoHeight'] ?? 120),
+            intval($k['sidebarLogoHeight'] ?? 64)
         ]);
         echo json_encode(['success' => true]);
         exit;

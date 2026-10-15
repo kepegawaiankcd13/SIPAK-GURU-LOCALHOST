@@ -168,6 +168,8 @@ CREATE TABLE `kop_settings` (
   `tteTextJabatan1` VARCHAR(255) NULL,
   `tteTextJabatan2` VARCHAR(255) NULL,
   `appLogoUrl` LONGTEXT NULL,
+  `loginLogoHeight` INT DEFAULT 120,
+  `sidebarLogoHeight` INT DEFAULT 64,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -202,7 +202,7 @@ export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOp
               onClick={onOpenLogoModal}
               className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2.5 shrink-0 cursor-pointer"
             >
-              <Camera className="w-4 h-4" /> GANTI LOGO APLIKASI
+              <Camera className="w-4 h-4" /> ATUR LOGO & UKURAN
             </button>
           )}
         </div>

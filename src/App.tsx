@@ -31,7 +31,8 @@ import {
   X,
   Terminal,
   Database,
-  Camera
+  Camera,
+  Sliders
 } from "lucide-react";
 import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings } from "./types";
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from "./data/golonganData";
@@ -261,10 +262,21 @@ export default function App() {
   const [appLogo, setAppLogo] = useState<string>(() => {
     return localStorage.getItem('simpak_app_logo') || DEFAULT_APP_LOGO;
   });
+  const [loginLogoHeight, setLoginLogoHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('simpak_login_logo_height');
+    return saved ? Number(saved) : 120; // Default 120px
+  });
+  const [sidebarLogoHeight, setSidebarLogoHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('simpak_sidebar_logo_height');
+    return saved ? Number(saved) : 64; // Default 64px
+  });
+
   const [logoModalOpen, setLogoModalOpen] = useState(false);
   const [customLogoUrlInput, setCustomLogoUrlInput] = useState('');
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [tempLoginLogoHeight, setTempLoginLogoHeight] = useState<number>(loginLogoHeight);
+  const [tempSidebarLogoHeight, setTempSidebarLogoHeight] = useState<number>(sidebarLogoHeight);
 
   const [kopSettings, setKopSettings] = useState<KopSettings>(() => {
     const saved = localStorage.getItem('sipak_kop_settings');
@@ -285,7 +297,9 @@ export default function App() {
       tteLogoType: 'default',
       tteLogoUrl: '',
       tteLogoBase64: '',
-      tteTextHeader: 'Ditandatangani secara elektronik oleh :'
+      tteTextHeader: 'Ditandatangani secara elektronik oleh :',
+      loginLogoHeight: 120,
+      sidebarLogoHeight: 64
     };
   });
 
@@ -303,6 +317,14 @@ export default function App() {
           setAppLogo(data.appLogoUrl);
           localStorage.setItem('simpak_app_logo', data.appLogoUrl);
         }
+        if (data.loginLogoHeight) {
+          setLoginLogoHeight(Number(data.loginLogoHeight));
+          localStorage.setItem('simpak_login_logo_height', String(data.loginLogoHeight));
+        }
+        if (data.sidebarLogoHeight) {
+          setSidebarLogoHeight(Number(data.sidebarLogoHeight));
+          localStorage.setItem('simpak_sidebar_logo_height', String(data.sidebarLogoHeight));
+        }
       }
     }).catch(() => {});
   }, []);
@@ -317,22 +339,42 @@ export default function App() {
           setAppLogo(data.appLogoUrl);
           localStorage.setItem('simpak_app_logo', data.appLogoUrl);
         }
+        if (data.loginLogoHeight) {
+          setLoginLogoHeight(Number(data.loginLogoHeight));
+          localStorage.setItem('simpak_login_logo_height', String(data.loginLogoHeight));
+        }
+        if (data.sidebarLogoHeight) {
+          setSidebarLogoHeight(Number(data.sidebarLogoHeight));
+          localStorage.setItem('simpak_sidebar_logo_height', String(data.sidebarLogoHeight));
+        }
       }
     }).catch(err => {
       console.warn("Gagal memuat KOP dari MySQL:", err);
     });
   }, [user]);
 
-  // Handler to save and persist app logo
-  const handleSaveAppLogo = async (newLogoUrl: string) => {
-    setAppLogo(newLogoUrl);
-    localStorage.setItem('simpak_app_logo', newLogoUrl);
+  // Handler to save and persist app logo and sizes
+  const handleSaveAppLogo = async (newLogoUrl?: string, newLoginH?: number, newSidebarH?: number) => {
+    const finalLogo = newLogoUrl !== undefined ? newLogoUrl : (logoPreviewUrl || appLogo);
+    const finalLoginH = newLoginH !== undefined ? newLoginH : tempLoginLogoHeight;
+    const finalSidebarH = newSidebarH !== undefined ? newSidebarH : tempSidebarLogoHeight;
+
+    setAppLogo(finalLogo);
+    setLoginLogoHeight(finalLoginH);
+    setSidebarLogoHeight(finalSidebarH);
+
+    localStorage.setItem('simpak_app_logo', finalLogo);
+    localStorage.setItem('simpak_login_logo_height', String(finalLoginH));
+    localStorage.setItem('simpak_sidebar_logo_height', String(finalSidebarH));
+
     setLogoPreviewUrl(null);
     setLogoModalOpen(false);
 
     const updatedKop: KopSettings = {
       ...kopSettings,
-      appLogoUrl: newLogoUrl
+      appLogoUrl: finalLogo,
+      loginLogoHeight: finalLoginH,
+      sidebarLogoHeight: finalSidebarH
     };
     setKopSettings(updatedKop);
 
@@ -342,11 +384,13 @@ export default function App() {
       console.warn("Gagal mencadangkan logo ke MySQL:", err);
     }
 
-    toast.success("Logo aplikasi SIMPAK berhasil diperbarui! Perubahan langsung diterapkan ke Login dan Dashboard.");
+    toast.success("Logo dan ukuran tampilan berhasil disimpan! Perubahan langsung aktif di Login dan Dashboard.");
   };
 
   const handleResetAppLogo = () => {
-    handleSaveAppLogo(DEFAULT_APP_LOGO);
+    setTempLoginLogoHeight(120);
+    setTempSidebarLogoHeight(64);
+    handleSaveAppLogo(DEFAULT_APP_LOGO, 120, 64);
   };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1465,33 +1509,147 @@ export default function App() {
               {/* Logo Previews (Current / Proposed) */}
               <div className="space-y-2">
                 <label className="block text-[11px] font-black uppercase text-slate-400 tracking-wider">
-                  Pratinjau Logo Saat Ini & Tampilan Baru:
+                  Pratinjau Logo & Ukuran Tampilan:
                 </label>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Logo Aktif</span>
-                    <div className="w-16 h-20 flex items-center justify-center">
-                      <img 
-                        src={appLogo || "/logo.png"} 
-                        alt="Logo Aktif" 
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = DEFAULT_APP_LOGO;
-                        }}
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                  </div>
-                  <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2">
-                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Pilihan Baru</span>
-                    <div className="w-16 h-20 flex items-center justify-center">
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center text-center space-y-2 min-h-[140px]">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tampilan Login</span>
+                    <div 
+                      style={{ height: `${Math.min(tempLoginLogoHeight, 140)}px` }}
+                      className="flex items-center justify-center transition-all duration-200"
+                    >
                       <img 
                         src={logoPreviewUrl || appLogo || "/logo.png"} 
-                        alt="Pilihan Baru" 
+                        alt="Pratinjau Login" 
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src = DEFAULT_APP_LOGO;
                         }}
-                        className="w-full h-full object-contain"
+                        style={{ height: `${Math.min(tempLoginLogoHeight, 140)}px`, width: 'auto' }}
+                        className="max-w-full object-contain"
                       />
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-mono font-bold">{tempLoginLogoHeight} px</span>
+                  </div>
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center text-center space-y-2 min-h-[140px]">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tampilan Sidebar</span>
+                    <div 
+                      style={{ height: `${tempSidebarLogoHeight}px` }}
+                      className="flex items-center justify-center transition-all duration-200"
+                    >
+                      <img 
+                        src={logoPreviewUrl || appLogo || "/logo.png"} 
+                        alt="Pratinjau Sidebar" 
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = DEFAULT_APP_LOGO;
+                        }}
+                        style={{ height: `${tempSidebarLogoHeight}px`, width: 'auto' }}
+                        className="max-w-full object-contain"
+                      />
+                    </div>
+                    <span className="text-[10px] text-teal-400 font-mono font-bold">{tempSidebarLogoHeight} px</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Setting Ukuran Logo Controls */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                      Pengaturan Ukuran Logo
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempLoginLogoHeight(90);
+                        setTempSidebarLogoHeight(50);
+                      }}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                    >
+                      Kecil
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempLoginLogoHeight(125);
+                        setTempSidebarLogoHeight(64);
+                      }}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/40 transition-colors cursor-pointer"
+                    >
+                      Proporsional
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempLoginLogoHeight(150);
+                        setTempSidebarLogoHeight(76);
+                      }}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer"
+                    >
+                      Besar ⭐
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTempLoginLogoHeight(180);
+                        setTempSidebarLogoHeight(88);
+                      }}
+                      className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                    >
+                      Ekstra Besar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Slider Login */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium">Ukuran Logo Login:</span>
+                      <span className="font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/40">
+                        {tempLoginLogoHeight} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={70}
+                      max={190}
+                      step={5}
+                      value={tempLoginLogoHeight}
+                      onChange={(e) => setTempLoginLogoHeight(Number(e.target.value))}
+                      className="w-full accent-emerald-500 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-500">
+                      <span>70px</span>
+                      <span>125px (Standar)</span>
+                      <span>190px</span>
+                    </div>
+                  </div>
+
+                  {/* Slider Sidebar */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-medium">Ukuran Logo Sidebar:</span>
+                      <span className="font-mono font-bold text-teal-400 bg-teal-950/80 px-2 py-0.5 rounded border border-teal-800/40">
+                        {tempSidebarLogoHeight} px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={40}
+                      max={95}
+                      step={4}
+                      value={tempSidebarLogoHeight}
+                      onChange={(e) => setTempSidebarLogoHeight(Number(e.target.value))}
+                      className="w-full accent-teal-500 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-slate-500">
+                      <span>40px</span>
+                      <span>64px (Standar)</span>
+                      <span>95px</span>
                     </div>
                   </div>
                 </div>
@@ -1598,17 +1756,12 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (logoPreviewUrl) {
-                        handleSaveAppLogo(logoPreviewUrl);
-                      } else if (customLogoUrlInput.trim()) {
-                        handleSaveAppLogo(customLogoUrlInput.trim());
-                      } else {
-                        setLogoModalOpen(false);
-                      }
+                      const finalLogo = logoPreviewUrl || (customLogoUrlInput.trim() ? customLogoUrlInput.trim() : appLogo);
+                      handleSaveAppLogo(finalLogo, tempLoginLogoHeight, tempSidebarLogoHeight);
                     }}
-                    className="flex-1 sm:flex-none px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 cursor-pointer"
+                    className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 cursor-pointer"
                   >
-                    SIMPAN LOGO BARU
+                    SIMPAN LOGO & UKURAN
                   </button>
                 </div>
               </div>
@@ -1693,7 +1846,10 @@ export default function App() {
  
             {/* Shield & Crest Header */}
             <div className="flex flex-col items-center space-y-3">
-              <div className="w-16 h-20 flex items-center justify-center filter drop-shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+              <div 
+                style={{ height: `${loginLogoHeight}px` }}
+                className="flex items-center justify-center filter drop-shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300"
+              >
                 <img 
                   src={appLogo || "/logo.png"} 
                   alt="Logo SIMPAK" 
@@ -1703,7 +1859,8 @@ export default function App() {
                       target.src = DEFAULT_APP_LOGO;
                     }
                   }}
-                  className="w-full h-full object-contain"
+                  style={{ height: `${loginLogoHeight}px`, width: 'auto', maxHeight: '200px' }}
+                  className="max-w-[280px] object-contain transition-all duration-300"
                   referrerPolicy="no-referrer"
                 />
               </div>
@@ -1796,7 +1953,8 @@ export default function App() {
                   target.src = DEFAULT_APP_LOGO;
                 }
               }}
-              className="w-7 h-9 object-contain"
+              style={{ height: `${Math.min(sidebarLogoHeight, 48)}px`, width: 'auto' }}
+              className="object-contain"
               referrerPolicy="no-referrer"
             />
             <div>
@@ -1829,9 +1987,12 @@ export default function App() {
           ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}>
           {/* Sidebar Top Brand Header */}
-          <div className="p-6 border-b border-slate-850 flex items-center justify-between bg-slate-950/30">
+          <div className="p-4 border-b border-slate-850 flex items-center justify-between bg-slate-950/30">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-12 flex items-center justify-center shrink-0">
+              <div 
+                style={{ height: `${sidebarLogoHeight}px` }}
+                className="flex items-center justify-center shrink-0 transition-all duration-300"
+              >
                 <img 
                   src={appLogo || "/logo.png"} 
                   alt="Logo SIMPAK" 
@@ -1841,7 +2002,8 @@ export default function App() {
                       target.src = DEFAULT_APP_LOGO;
                     }
                   }}
-                  className="w-full h-full object-contain"
+                  style={{ height: `${sidebarLogoHeight}px`, width: 'auto', maxHeight: '95px' }}
+                  className="max-w-[95px] object-contain transition-all duration-300 drop-shadow-md"
                   referrerPolicy="no-referrer"
                 />
               </div>
@@ -1858,9 +2020,11 @@ export default function App() {
                   setLogoPreviewUrl(null);
                   setLogoUploadError(null);
                   setCustomLogoUrlInput('');
+                  setTempLoginLogoHeight(loginLogoHeight);
+                  setTempSidebarLogoHeight(sidebarLogoHeight);
                   setLogoModalOpen(true);
                 }}
-                title="Ganti Logo Aplikasi SIMPAK"
+                title="Atur Logo & Ukuran SIMPAK"
                 className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
               >
                 <Camera className="w-4 h-4" />

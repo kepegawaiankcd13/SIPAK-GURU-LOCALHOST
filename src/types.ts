@@ -137,5 +137,8 @@ export interface KopSettings {
   tteTextJabatan1?: string;
   tteTextJabatan2?: string;
   appLogoUrl?: string;
+  appLogoSize?: number;
+  loginLogoHeight?: number;
+  sidebarLogoHeight?: number;
 }
 
