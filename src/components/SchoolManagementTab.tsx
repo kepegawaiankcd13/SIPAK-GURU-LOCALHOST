@@ -31,7 +31,15 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
   const [isAddingSchool, setIsAddingSchool] = useState(false);
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    return (localStorage.getItem('sipak_school_view_mode') as 'grid' | 'list') || 'grid';
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('sipak_school_view_mode', mode);
+  };
+
   const [filterCity, setFilterCity] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -519,33 +527,38 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 self-end md:self-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setViewMode('grid')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              viewMode === 'grid'
-                ? 'bg-white text-teal-700 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-            title="Tampilan Kartu (Grid)"
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Kartu</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              viewMode === 'list'
-                ? 'bg-white text-teal-700 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-700'
-            }`}
-            title="Tampilan Daftar (Tabel)"
-          >
-            <List className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Daftar</span>
-          </button>
+        <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider hidden lg:inline">
+            TAMPILAN:
+          </span>
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('grid')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Tampilan Kartu / Grid"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>GRID / KARTU</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                viewMode === 'list'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Tampilan Tabel / List"
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>TABEL / LIST</span>
+            </button>
+          </div>
         </div>
       </div>
 

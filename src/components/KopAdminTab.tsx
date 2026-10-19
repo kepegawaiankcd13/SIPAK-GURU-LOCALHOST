@@ -7,6 +7,7 @@ interface KopAdminTabProps {
   setKopSettings: (settings: KopSettings) => void;
   appLogo?: string;
   onOpenLogoModal?: () => void;
+  userRole?: string;
 }
 
 const PRESETS = [
@@ -117,7 +118,7 @@ const compressLogoImage = (base64Str: string): Promise<string> => {
   });
 };
 
-export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOpenLogoModal }: KopAdminTabProps) {
+export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOpenLogoModal, userRole }: KopAdminTabProps) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'kop' | 'tte'>('kop');
 
@@ -170,43 +171,45 @@ export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOp
         </div>
       </div>
 
-      {/* Logo Aplikasi SIMPAK (Login & Dashboard) Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/30 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-20 bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-inner">
-              <img 
-                src={appLogo || "/logo.png"} 
-                alt="Logo SIMPAK" 
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = "https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg";
-                }}
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">IDENTITAS VISUAL APLIKASI</span>
-                <span className="px-2 py-0.5 text-[9px] font-black bg-emerald-500/20 text-emerald-300 rounded-full">Aktif</span>
+      {/* Logo Aplikasi SIMPAK (Login & Dashboard) Banner - Khusus Super Admin */}
+      {userRole === 'super_admin' && (
+        <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/30 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-20 bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-inner">
+                <img 
+                  src={appLogo || "/logo.png"} 
+                  alt="Logo SIMPAK" 
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = "https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg";
+                  }}
+                  className="w-full h-full object-contain"
+                />
               </div>
-              <h3 className="text-lg font-black text-white tracking-tight mt-0.5">Logo Aplikasi SIMPAK (Login & Dashboard)</h3>
-              <p className="text-xs text-slate-300 mt-1 max-w-xl">
-                Logo ini tampil di halaman <strong>Login</strong>, <strong>Sidebar Dashboard</strong>, dan <strong>Mobile Header</strong>. Anda dapat mengunggah gambar logo Anda (misal: <em>LOGO CABANG DINAS-13.png</em>) langsung di sini atau meletakkan file <em>logo.png</em> di cPanel.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">IDENTITAS VISUAL APLIKASI</span>
+                  <span className="px-2 py-0.5 text-[9px] font-black bg-emerald-500/20 text-emerald-300 rounded-full">Aktif</span>
+                </div>
+                <h3 className="text-lg font-black text-white tracking-tight mt-0.5">Logo Aplikasi SIMPAK (Login & Dashboard)</h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                  Logo ini tampil di halaman <strong>Login</strong>, <strong>Sidebar Dashboard</strong>, dan <strong>Mobile Header</strong>. Anda dapat mengunggah gambar logo Anda (misal: <em>LOGO CABANG DINAS-13.png</em>) langsung di sini atau meletakkan file <em>logo.png</em> di cPanel.
+                </p>
+              </div>
             </div>
+            {onOpenLogoModal && (
+              <button
+                type="button"
+                onClick={onOpenLogoModal}
+                className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2.5 shrink-0 cursor-pointer"
+              >
+                <Camera className="w-4 h-4" /> ATUR LOGO & UKURAN
+              </button>
+            )}
           </div>
-          {onOpenLogoModal && (
-            <button
-              type="button"
-              onClick={onOpenLogoModal}
-              className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-lg shadow-emerald-900/30 transition-all flex items-center gap-2.5 shrink-0 cursor-pointer"
-            >
-              <Camera className="w-4 h-4" /> ATUR LOGO & UKURAN
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
       {/* Modern Horizontal Navigation Tabs (Sesuai Permintaan: Dipisah) */}
       <div className="flex border-b border-slate-200">

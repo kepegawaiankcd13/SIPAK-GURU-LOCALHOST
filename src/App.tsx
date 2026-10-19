@@ -194,6 +194,7 @@ export default function App() {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [teacherToDelete, setTeacherToDelete] = useState<{ id: string, name: string } | null>(null);
   const [xamppModalOpen, setXamppModalOpen] = useState(false);
+  const [dbErrorWarning, setDbErrorWarning] = useState<string | null>(null);
 
   // Elegant Toast notifications state
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
@@ -277,6 +278,21 @@ export default function App() {
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [tempLoginLogoHeight, setTempLoginLogoHeight] = useState<number>(loginLogoHeight);
   const [tempSidebarLogoHeight, setTempSidebarLogoHeight] = useState<number>(sidebarLogoHeight);
+
+  // Dynamically sync browser Favicon with active appLogo
+  useEffect(() => {
+    try {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = appLogo || DEFAULT_APP_LOGO;
+    } catch (e) {
+      console.warn("Gagal memperbarui favicon browser:", e);
+    }
+  }, [appLogo]);
 
   const [kopSettings, setKopSettings] = useState<KopSettings>(() => {
     const saved = localStorage.getItem('sipak_kop_settings');
@@ -488,6 +504,18 @@ export default function App() {
 
     setLoadingTeachers(true);
     try {
+      // Check database health and status
+      fetch('/api/db-status')
+        .then(res => res.json())
+        .then(st => {
+          if (st && st.connected === false) {
+            setDbErrorWarning(st.message || 'Koneksi database MySQL gagal.');
+          } else {
+            setDbErrorWarning(null);
+          }
+        })
+        .catch(() => {});
+
       const list = await fetchTeachersFromMysql();
       if (list && Array.isArray(list)) {
         const userSchool = (user.school || "").trim().toUpperCase();
@@ -1477,8 +1505,8 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* Application Logo Customization Modal */}
-        {logoModalOpen && (
+        {/* Application Logo Customization Modal - Khusus Super Admin */}
+        {logoModalOpen && user.role === 'super_admin' && (
           <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fadeIn text-slate-100 overflow-y-auto">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 relative my-8">
               
@@ -1489,8 +1517,8 @@ export default function App() {
                     <Camera className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-white tracking-tight uppercase">Ganti Logo Aplikasi SIMPAK</h3>
-                    <p className="text-[11px] text-slate-400">Atur logo untuk Tampilan Login & Menu Dashboard</p>
+                    <h3 className="text-base font-black text-white tracking-tight uppercase">Ganti Logo & Favicon SIMPAK</h3>
+                    <p className="text-[11px] text-slate-400">Atur logo untuk Tampilan Login, Menu Dashboard, & Favicon Browser</p>
                   </div>
                 </div>
                 <button
@@ -1769,8 +1797,10 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* XAMPP MySQL Configuration Modal */}
-        <XamppModal isOpen={xamppModalOpen} onClose={() => setXamppModalOpen(false)} />
+        {/* XAMPP MySQL Configuration Modal - Khusus Super Admin */}
+        {user.role === 'super_admin' && (
+          <XamppModal isOpen={xamppModalOpen} onClose={() => setXamppModalOpen(false)} />
+        )}
       </>
     );
   };
@@ -1958,7 +1988,9 @@ export default function App() {
               referrerPolicy="no-referrer"
             />
             <div>
-              <span className="block text-[8px] font-black text-emerald-400 tracking-wider">SIMPAK</span>
+              <span className="block text-[8px] font-black text-emerald-400 tracking-wider">
+                SIMPAK {user.role === 'school_admin' && user.school ? `• ${user.school}` : ''}
+              </span>
               <span className="block text-[10px] font-bold text-slate-300">CABIN DISDIK JABAR XIII</span>
             </div>
           </div>
@@ -2013,7 +2045,7 @@ export default function App() {
                 <span className="block text-[9px] text-slate-400 font-medium leading-tight truncate">CDP WILAYAH XIII JABAR</span>
               </div>
             </div>
-            {(user.role === 'super_admin' || user.role === 'school_admin') && (
+            {user.role === 'super_admin' && (
               <button
                 type="button"
                 onClick={() => {
@@ -2033,22 +2065,47 @@ export default function App() {
           </div>
 
           {/* User Profile Info section in Sidebar */}
-          <div className="p-4 mx-4 my-4 bg-slate-950/45 rounded-xl border border-slate-850/80 space-y-2 select-none">
+          <div className="p-4 mx-4 my-4 bg-slate-950/45 rounded-xl border border-slate-850/80 space-y-2.5 select-none">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-emerald-600/20 border border-emerald-500/35 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-emerald-600/20 border border-emerald-500/35 flex items-center justify-center shrink-0">
                 <User className="w-4 h-4 text-emerald-400" />
               </div>
-              <div className="truncate min-w-0">
+              <div className="truncate min-w-0 flex-1">
                 <span className="block text-[9px] font-black text-slate-500 uppercase tracking-wider">AKTIF PETUGAS</span>
                 <p className="text-xs font-bold text-slate-200 truncate leading-tight">{user.displayName || user.username}</p>
               </div>
             </div>
-            <div className="flex items-center justify-between gap-1 pt-1 border-t border-slate-850/40">
+
+            {/* Unit Kerja / Nama Sekolah Aktif */}
+            {user.role === 'school_admin' && (
+              <div className="bg-emerald-950/50 border border-emerald-500/35 rounded-xl p-2.5 space-y-1">
+                <div className="flex items-center gap-1.5 text-emerald-400">
+                  <Building className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-wider">UNIT KERJA / SEKOLAH:</span>
+                </div>
+                <p className="text-xs font-black text-white uppercase tracking-tight leading-snug pl-5 break-words">
+                  {user.school || "SEKOLAH INDUK"}
+                </p>
+              </div>
+            )}
+            {user.role === 'super_admin' && (
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-2 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-teal-400">
+                  <Building className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[9px] font-black uppercase tracking-wider">WILAYAH TUGAS:</span>
+                </div>
+                <p className="text-[10px] font-bold text-slate-300 leading-snug pl-5">
+                  KCD Wilayah XIII Jabar (Semua Sekolah)
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-slate-850/40">
               <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-900 px-2 py-0.5 rounded-md uppercase">
-                {user.role === 'super_admin' ? 'SUPER ADMIN' : 'ADMIN SEKOLAH'}
+                {user.role === 'super_admin' ? 'SUPER ADMIN' : 'OPERATOR SEKOLAH'}
               </span>
               <div className="flex items-center gap-1 font-mono text-[9px] text-slate-500">
-                <Clock className="w-3 h-3 text-slate-500 animate-pulse" />
+                <Clock className="w-3 h-3 text-emerald-500 animate-pulse" />
                 <span>ONLINE</span>
               </div>
             </div>
@@ -2195,23 +2252,25 @@ export default function App() {
               </span>
             </button>
 
-            {/* 8. Database MySQL XAMPP (Mac / SQL) */}
-            <button
-              onClick={() => {
-                setXamppModalOpen(true);
-                setMobileSidebarOpen(false);
-              }}
-              className="w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer text-left text-sky-400 hover:bg-sky-950/40 hover:text-sky-200 border border-sky-900/40"
-              title="Panduan Database MySQL XAMPP & Unduh File database.sql"
-            >
-              <div className="flex items-center gap-3">
-                <Database className="w-4 h-4 text-sky-400" />
-                <span>DATABASE XAMPP (MAC)</span>
-              </div>
-              <span className="bg-sky-950 text-sky-300 text-[8px] font-mono px-1.5 py-0.5 rounded border border-sky-850 uppercase">
-                SQL
-              </span>
-            </button>
+            {/* 8. Database MySQL XAMPP (Mac / SQL) - Khusus Super Admin */}
+            {user.role === 'super_admin' && (
+              <button
+                onClick={() => {
+                  setXamppModalOpen(true);
+                  setMobileSidebarOpen(false);
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-bold transition-all duration-200 cursor-pointer text-left text-sky-400 hover:bg-sky-950/40 hover:text-sky-200 border border-sky-900/40"
+                title="Panduan Database MySQL XAMPP & Unduh File database.sql"
+              >
+                <div className="flex items-center gap-3">
+                  <Database className="w-4 h-4 text-sky-400" />
+                  <span>DATABASE XAMPP (MAC)</span>
+                </div>
+                <span className="bg-sky-950 text-sky-300 text-[8px] font-mono px-1.5 py-0.5 rounded border border-sky-850 uppercase">
+                  SQL
+                </span>
+              </button>
+            )}
           </nav>
 
           {/* Sidebar Bottom Session Controls & Exit */}
@@ -2233,11 +2292,17 @@ export default function App() {
           
           {/* Top subtle workspace alert bar on desktop */}
           <div id="top-admin-banner" className="hidden md:flex bg-slate-900 text-slate-400 text-[10px] py-2 px-8 justify-between items-center border-b border-slate-950 select-none print:hidden shrink-0">
-            <div className="flex items-center gap-1.5 font-mono">
+            <div className="flex items-center gap-2 font-mono">
               <Clock className="w-3 h-3 text-teal-400 animate-pulse" />
-              <span className="uppercase text-slate-500">SISTEM INTEGRASI ANGKA KREDIT GURU PNS</span>
+              <span className="uppercase text-slate-300 font-bold">
+                {user.role === 'school_admin' && user.school 
+                  ? `UNIT KERJA / SEKOLAH: ${user.school}` 
+                  : "SISTEM INTEGRASI ANGKA KREDIT GURU PNS"}
+              </span>
             </div>
-            <div className="flex items-center gap-1 font-mono text-[9px]">
+            <div className="flex items-center gap-2 font-mono text-[9px]">
+              <span className="text-emerald-400 font-bold">{user.displayName || user.username}</span>
+              <span>•</span>
               <span>KCD Wil. XIII Ciamis Pangandaran Banjar</span>
             </div>
           </div>
@@ -2249,9 +2314,20 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="space-y-1">
-                  <span className="text-[10px] font-black uppercase text-teal-655 text-teal-600 tracking-wider">SIMPAK Hub</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-teal-600 tracking-wider">SIMPAK Hub</span>
+                    {user.role === 'school_admin' && user.school && (
+                      <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase border border-emerald-300">
+                        🏫 {user.school}
+                      </span>
+                    )}
+                  </div>
                   <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Pangkalan Data PAK Guru PNS</h1>
-                  <p className="text-xs text-slate-500">Kelola perhitungan angka kredit mutasi promosi pangkat ratusan guru ASN dengan instan dan aman.</p>
+                  <p className="text-xs text-slate-500">
+                    {user.role === 'school_admin' && user.school
+                      ? `Menampilkan pangkalan data dan penetapan angka kredit Guru ASN pada ${user.school}.`
+                      : "Kelola perhitungan angka kredit mutasi promosi pangkat ratusan guru ASN dengan instan dan aman."}
+                  </p>
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3 shrink-0">
@@ -2737,6 +2813,44 @@ export default function App() {
                 </div>
               )}
 
+              {/* Database Connection Warning Alert */}
+              {dbErrorWarning && (
+                <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-700 shrink-0">
+                      <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-amber-900">
+                        Pemberitahuan Status Database MySQL
+                      </h4>
+                      <p className="text-xs text-amber-800/90 mt-0.5">{dbErrorWarning}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        loadTeachers();
+                        loadSchools();
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      Coba Hubungkan Ulang
+                    </button>
+                    {user.role === 'super_admin' && (
+                      <button
+                        type="button"
+                        onClick={() => setXamppModalOpen(true)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                      >
+                        Cek Kredensial Database
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Teachers list container */}
               {loadingTeachers ? (
                 <div className="bg-white rounded-2xl p-12 border border-slate-200 text-center space-y-3">
@@ -3036,12 +3150,15 @@ export default function App() {
               kopSettings={kopSettings}
               setKopSettings={setKopSettings}
               appLogo={appLogo}
-              onOpenLogoModal={() => {
+              userRole={user.role}
+              onOpenLogoModal={user.role === 'super_admin' ? () => {
                 setLogoPreviewUrl(null);
                 setLogoUploadError(null);
                 setCustomLogoUrlInput('');
+                setTempLoginLogoHeight(loginLogoHeight);
+                setTempSidebarLogoHeight(sidebarLogoHeight);
                 setLogoModalOpen(true);
-              }}
+              } : undefined}
             />
           )}
 
@@ -3339,12 +3456,15 @@ export default function App() {
                     kopSettings={kopSettings}
                     setKopSettings={setKopSettings}
                     appLogo={appLogo}
-                    onOpenLogoModal={() => {
+                    userRole={user.role}
+                    onOpenLogoModal={user.role === 'super_admin' ? () => {
                       setLogoPreviewUrl(null);
                       setLogoUploadError(null);
                       setCustomLogoUrlInput('');
+                      setTempLoginLogoHeight(loginLogoHeight);
+                      setTempSidebarLogoHeight(sidebarLogoHeight);
                       setLogoModalOpen(true);
-                    }}
+                    } : undefined}
                   />
                 )}
 

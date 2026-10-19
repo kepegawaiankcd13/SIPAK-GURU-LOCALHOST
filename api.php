@@ -23,21 +23,36 @@ $env = [];
 if (file_exists($envFile)) {
     $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
+        $line = trim($line);
+        if ($line === '' || strpos($line, '#') === 0) continue;
         $parts = explode('=', $line, 2);
         if (count($parts) === 2) {
-            $env[trim($parts[0])] = trim($parts[1]);
+            $key = trim($parts[0]);
+            $val = trim($parts[1]);
+            // Strip surrounding single or double quotes
+            if (strlen($val) >= 2 && (
+                ($val[0] === '"' && substr($val, -1) === '"') ||
+                ($val[0] === "'" && substr($val, -1) === "'")
+            )) {
+                $val = substr($val, 1, -1);
+            }
+            $env[$key] = trim($val);
         }
     }
 }
 
-$dbHost = $env['DB_HOST'] ?? getenv('DB_HOST') ?: 'localhost';
-$dbPort = $env['DB_PORT'] ?? getenv('DB_PORT') ?: '3306';
-$dbName = $env['DB_NAME'] ?? getenv('DB_NAME') ?: 'yogo_simpak';
-$dbUser = $env['DB_USER'] ?? getenv('DB_USER') ?: 'yogo_simpak';
-$dbPass = $env['DB_PASSWORD'] ?? getenv('DB_PASSWORD') ?: 'adminkcd13!!';
+function cleanEnvVal($val, $default = '') {
+    if ($val === null || $val === false || $val === '') return $default;
+    return trim((string)$val, "\"' \t\n\r\0\x0B");
+}
 
-// PDO Connection
+$dbHost = cleanEnvVal($env['DB_HOST'] ?? getenv('DB_HOST'), 'localhost');
+$dbPort = cleanEnvVal($env['DB_PORT'] ?? getenv('DB_PORT'), '3306');
+$dbName = cleanEnvVal($env['DB_NAME'] ?? getenv('DB_NAME'), 'yogo_simpak');
+$dbUser = cleanEnvVal($env['DB_USER'] ?? getenv('DB_USER'), 'yogo_simpak');
+$dbPass = cleanEnvVal($env['DB_PASSWORD'] ?? getenv('DB_PASSWORD'), 'adminkcd13!!');
+
+// PDO Connection with automatic host retry
 $pdo = null;
 $dbError = null;
 
@@ -49,7 +64,24 @@ try {
         PDO::ATTR_EMULATE_PREPARES => false,
     ]);
 } catch (PDOException $e) {
-    $dbError = $e->getMessage();
+    // If localhost failed (UNIX socket issue on some cPanels), retry with 127.0.0.1 or vice-versa
+    if ($dbHost === 'localhost' || $dbHost === '127.0.0.1') {
+        $altHost = ($dbHost === 'localhost') ? '127.0.0.1' : 'localhost';
+        try {
+            $dsn2 = "mysql:host={$altHost};port={$dbPort};dbname={$dbName};charset=utf8mb4";
+            $pdo = new PDO($dsn2, $dbUser, $dbPass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+            $dbHost = $altHost;
+            $dbError = null;
+        } catch (PDOException $e2) {
+            $dbError = $e->getMessage() . " (Fallback host {$altHost} juga gagal: " . $e2->getMessage() . ")";
+        }
+    } else {
+        $dbError = $e->getMessage();
+    }
 }
 
 // Function to auto initialize schema if not present
