@@ -278,7 +278,7 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
     <div id="school-management-tab" className="space-y-6">
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-[10px] font-black uppercase text-teal-650 tracking-wider">SIMPAK Hub</span>
+          <span className="text-[10px] font-black uppercase text-teal-650 tracking-wider">Si-KAPITA Hub</span>
           <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
             {isSchoolAdmin ? "Informasi & Data Sekolah Anda" : "Master Data Sekolah"}
           </h2>

@@ -779,7 +779,7 @@ export default function App() {
     setLogoutConfirmOpen(false);
     swal.fire({
       title: "Keluar Berhasil!",
-      text: `Sampai jumpa kembali, ${oldName}! Anda telah berhasil keluar dari SIMPAK Hub dengan aman.`,
+      text: `Sampai jumpa kembali, ${oldName}! Anda telah berhasil keluar dari Si-KAPITA dengan aman.`,
       icon: "info",
       confirmButtonText: "Kembali ke Beranda"
     });
@@ -1449,7 +1449,7 @@ export default function App() {
               <div className="space-y-1.5">
                 <h3 className="text-base font-black text-slate-100 uppercase tracking-tight font-sans">Konfirmasi Keluar</h3>
                 <p className="text-xs text-slate-400 font-sans">
-                  Apakah Anda yakin ingin keluar dari portal administrasi SIMPAK? Anda perlu masuk kembali menggunakan kredensial Anda untuk melanjutkan pekerjaan.
+                  Apakah Anda yakin ingin keluar dari portal administrasi Si-KAPITA? Anda perlu masuk kembali menggunakan kredensial Anda untuk melanjutkan pekerjaan.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -1517,7 +1517,7 @@ export default function App() {
                     <Camera className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-white tracking-tight uppercase">Ganti Logo & Favicon SIMPAK</h3>
+                    <h3 className="text-base font-black text-white tracking-tight uppercase">Ganti Logo & Favicon Si-KAPITA</h3>
                     <p className="text-[11px] text-slate-400">Atur logo untuk Tampilan Login, Menu Dashboard, & Favicon Browser</p>
                   </div>
                 </div>
@@ -1812,7 +1812,7 @@ export default function App() {
         <div className="bg-slate-800 p-8 rounded-2xl border border-slate-700 shadow-xl flex flex-col items-center max-w-sm w-full text-center space-y-4">
           <div className="w-14 h-14 rounded-full border-t-4 border-l-4 border-teal-500 animate-spin"></div>
           <div>
-            <h3 className="font-bold text-slate-100 text-base">Memuat Portal SIMPAK</h3>
+            <h3 className="font-bold text-slate-100 text-base">Memuat Portal Si-KAPITA</h3>
             <p className="text-xs text-slate-450 mt-1">Menghubungkan ke secure cloud service...</p>
           </div>
         </div>
@@ -1882,7 +1882,7 @@ export default function App() {
               >
                 <img 
                   src={appLogo || "/logo.png"} 
-                  alt="Logo SIMPAK" 
+                  alt="Logo Si-KAPITA" 
                   onError={(e) => {
                     const target = e.currentTarget as HTMLImageElement;
                     if (target.src !== DEFAULT_APP_LOGO) {
@@ -1897,9 +1897,10 @@ export default function App() {
  
               <div className="text-center">
                 <span className="block text-[9px] font-black tracking-widest text-emerald-400 uppercase">PORTAL ADMINISTRASI KEPEGAWAIAN</span>
-                <h1 className="text-xl font-extrabold text-slate-100 uppercase tracking-tight">SIMPAK</h1>
-                <p className="text-[11px] text-slate-400 leading-relaxed mt-1">
-                  Sistem Informasi Perhitungan Angka Kredit Integrasi Guru Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat
+                <h1 className="text-2xl font-black text-white uppercase tracking-tight">Si-KAPITA</h1>
+                <p className="text-[11px] text-slate-300 leading-relaxed mt-1 font-medium">
+                  Sistem Informasi Konversi Angka Kredit Pendidik & Tenaga Kependidikan<br />
+                  <span className="text-emerald-400/90 text-[10px]">Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat</span>
                 </p>
               </div>
             </div>
@@ -1944,7 +1945,7 @@ export default function App() {
                 disabled={isLogining}
                 className={`w-full py-3 px-4 bg-teal-600 hover:bg-teal-505 active:bg-teal-700 text-white font-extrabold text-xs rounded-xl shadow-lg hover:shadow-teal-900/20 cursor-pointer transition-all border border-teal-500 select-none ${isLogining ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                {isLogining ? "MEMVERIFIKASI AUTENTIKASI..." : "MASUK KE PORTAL SIMPAK"}
+                {isLogining ? "MEMVERIFIKASI AUTENTIKASI..." : "MASUK KE PORTAL Si-KAPITA"}
               </button>
             </form>
 
@@ -1976,7 +1977,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <img 
               src={appLogo || "/logo.png"} 
-              alt="Logo SIMPAK" 
+              alt="Logo Si-KAPITA" 
               onError={(e) => {
                 const target = e.currentTarget as HTMLImageElement;
                 if (target.src !== DEFAULT_APP_LOGO) {
@@ -1989,7 +1990,7 @@ export default function App() {
             />
             <div>
               <span className="block text-[8px] font-black text-emerald-400 tracking-wider">
-                SIMPAK {user.role === 'school_admin' && user.school ? `• ${user.school}` : ''}
+                Si-KAPITA {user.role === 'school_admin' && user.school ? `• ${user.school}` : ''}
               </span>
               <span className="block text-[10px] font-bold text-slate-300">CABIN DISDIK JABAR XIII</span>
             </div>
@@ -2027,7 +2028,7 @@ export default function App() {
               >
                 <img 
                   src={appLogo || "/logo.png"} 
-                  alt="Logo SIMPAK" 
+                  alt="Logo Si-KAPITA" 
                   onError={(e) => {
                     const target = e.currentTarget as HTMLImageElement;
                     if (target.src !== DEFAULT_APP_LOGO) {
@@ -2041,7 +2042,7 @@ export default function App() {
               </div>
               <div className="min-w-0">
                 <span className="block text-[8px] font-black tracking-widest text-emerald-400 uppercase truncate">PORTAL ADMINISTRASI</span>
-                <h2 className="text-sm font-extrabold text-white tracking-tight uppercase truncate">SIMPAK</h2>
+                <h2 className="text-sm font-extrabold text-white tracking-tight uppercase truncate">Si-KAPITA</h2>
                 <span className="block text-[9px] text-slate-400 font-medium leading-tight truncate">CDP WILAYAH XIII JABAR</span>
               </div>
             </div>
@@ -2056,7 +2057,7 @@ export default function App() {
                   setTempSidebarLogoHeight(sidebarLogoHeight);
                   setLogoModalOpen(true);
                 }}
-                title="Atur Logo & Ukuran SIMPAK"
+                title="Atur Logo & Ukuran Si-KAPITA"
                 className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
@@ -2282,7 +2283,7 @@ export default function App() {
               <LogOut className="w-3.5 h-3.5" /> KELUAR PORTAL
             </button>
             <div className="text-center text-[9px] text-slate-500 font-mono tracking-tight leading-tight">
-              SIMPAK Hub v1.5 • 2026<br />Cabang Dinas Pendidikan Wilayah XIII
+              Si-KAPITA v1.5 • 2026<br />Cabang Dinas Pendidikan Wilayah XIII
             </div>
           </div>
         </aside>
@@ -2297,7 +2298,7 @@ export default function App() {
               <span className="uppercase text-slate-300 font-bold">
                 {user.role === 'school_admin' && user.school 
                   ? `UNIT KERJA / SEKOLAH: ${user.school}` 
-                  : "SISTEM INTEGRASI ANGKA KREDIT GURU PNS"}
+                  : "SISTEM INFORMASI KONVERSI ANGKA KREDIT PENDIDIK & TENAGA KEPENDIDIKAN"}
               </span>
             </div>
             <div className="flex items-center gap-2 font-mono text-[9px]">
@@ -2315,7 +2316,7 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-teal-600 tracking-wider">SIMPAK Hub</span>
+                    <span className="text-[10px] font-black uppercase text-teal-600 tracking-wider">Si-KAPITA Hub</span>
                     {user.role === 'school_admin' && user.school && (
                       <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase border border-emerald-300">
                         🏫 {user.school}
@@ -3178,7 +3179,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="bg-slate-900 border-t border-slate-950 py-6 px-6 text-center text-xs text-slate-400 select-none shrink-0">
-          <p className="font-bold text-slate-300">SIMPAK Hub © 2026</p>
+          <p className="font-bold text-slate-300">Si-KAPITA Hub © 2026</p>
           <p className="text-[10px] text-slate-500 mt-0.5">Cabang Dinas Pendidikan Wilayah XIII Provinsi Jawa Barat</p>
         </footer>
 
@@ -3212,7 +3213,7 @@ export default function App() {
       <div id="top-admin-banner-workspace" className="bg-teal-950 text-teal-200 text-[11px] py-2 px-6 flex flex-col sm:flex-row justify-between items-center gap-2 border-b border-teal-900 font-mono select-none print:hidden">
         <div className="flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-teal-300 animate-pulse fill-teal-950" />
-          <span>PORTAL SIMPAK • PEMBANGUNAN DOKUMEN PAK RESMI</span>
+          <span>PORTAL Si-KAPITA • PEMBANGUNAN DOKUMEN PAK RESMI</span>
         </div>
         <div className="flex items-center gap-4">
           <span>Petugas: <strong>{user.displayName || user.username}</strong></span>
@@ -3257,7 +3258,7 @@ export default function App() {
                   S
                 </div>
                 <div>
-                  <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">SIMPAK KCD XIII</h1>
+                  <h1 className="text-sm font-black text-slate-900 uppercase tracking-tight">Si-KAPITA KCD XIII</h1>
                   <p className="text-[10px] uppercase font-bold text-slate-400">PNS/ASN Career Tracker</p>
                 </div>
               </div>
@@ -3484,8 +3485,8 @@ export default function App() {
       <footer className="bg-slate-900 border-t border-slate-950 py-6 px-6 text-center text-xs text-slate-400 print:hidden">
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
-            <p className="font-bold text-slate-300">SIMPAK © 2026</p>
-            <p className="text-[10px] text-slate-500 font-medium">Sistem Perhitungan Portofolio Angka Kredit Integrasi Guru Dinas Pendidikan Provinsi Jawa Barat</p>
+            <p className="font-bold text-slate-300">Si-KAPITA © 2026</p>
+            <p className="text-[10px] text-slate-500 font-medium">Sistem Informasi Konversi Angka Kredit Pendidik & Tenaga Kependidikan - Dinas Pendidikan Provinsi Jawa Barat</p>
           </div>
           <div className="flex gap-4 text-[10px] select-none text-slate-500">
             <span>Buku Pedoman BKN</span>

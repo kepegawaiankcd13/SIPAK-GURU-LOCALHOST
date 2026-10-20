@@ -171,7 +171,7 @@ export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOp
         </div>
       </div>
 
-      {/* Logo Aplikasi SIMPAK (Login & Dashboard) Banner - Khusus Super Admin */}
+      {/* Logo Aplikasi Si-KAPITA (Login & Dashboard) Banner - Khusus Super Admin */}
       {userRole === 'super_admin' && (
         <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border border-emerald-500/30 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -180,7 +180,7 @@ export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOp
               <div className="w-16 h-20 bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2 flex items-center justify-center shrink-0 shadow-inner">
                 <img 
                   src={appLogo || "/logo.png"} 
-                  alt="Logo SIMPAK" 
+                  alt="Logo Si-KAPITA" 
                   onError={(e) => {
                     (e.currentTarget as HTMLImageElement).src = "https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg";
                   }}
@@ -192,7 +192,7 @@ export default function KopAdminTab({ kopSettings, setKopSettings, appLogo, onOp
                   <span className="text-[10px] font-black tracking-widest text-emerald-400 uppercase">IDENTITAS VISUAL APLIKASI</span>
                   <span className="px-2 py-0.5 text-[9px] font-black bg-emerald-500/20 text-emerald-300 rounded-full">Aktif</span>
                 </div>
-                <h3 className="text-lg font-black text-white tracking-tight mt-0.5">Logo Aplikasi SIMPAK (Login & Dashboard)</h3>
+                <h3 className="text-lg font-black text-white tracking-tight mt-0.5">Logo Aplikasi Si-KAPITA (Login & Dashboard)</h3>
                 <p className="text-xs text-slate-300 mt-1 max-w-xl">
                   Logo ini tampil di halaman <strong>Login</strong>, <strong>Sidebar Dashboard</strong>, dan <strong>Mobile Header</strong>. Anda dapat mengunggah gambar logo Anda (misal: <em>LOGO CABANG DINAS-13.png</em>) langsung di sini atau meletakkan file <em>logo.png</em> di cPanel.
                 </p>
