@@ -8,6 +8,18 @@
     <meta property="og:title" content="Si-KAPITA - Sistem Informasi Konversi Angka Kredit Pendidik & Tenaga Kependidikan" />
     <meta property="og:description" content="Si-KAPITA (Sistem Informasi Konversi Angka Kredit Pendidik & Tenaga Kependidikan) Cabang Dinas Pendidikan Wilayah XIII Dinas Pendidikan Provinsi Jawa Barat" />
     <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/9/99/Coat_of_arms_of_West_Java.svg" id="app-favicon" />
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('sikapita_theme');
+          if (t === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

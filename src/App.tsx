@@ -32,7 +32,11 @@ import {
   Terminal,
   Database,
   Camera,
-  Sliders
+  Sliders,
+  Sun,
+  Moon,
+  Maximize,
+  Minimize
 } from "lucide-react";
 import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings } from "./types";
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from "./data/golonganData";
@@ -293,6 +297,91 @@ export default function App() {
       console.warn("Gagal memperbarui favicon browser:", e);
     }
   }, [appLogo]);
+
+  // Theme (Dark / Light) Mode state & toggle
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    const saved = localStorage.getItem("sikapita_theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return "light";
+  });
+
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+    localStorage.setItem("sikapita_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === "dark" ? "light" : "dark"));
+  };
+
+  // Fullscreen state & toggle
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(() => {
+    if (typeof document === 'undefined') return false;
+    return !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+  });
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(active);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange);
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange);
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!isFullscreen) {
+        const docEl = document.documentElement as any;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } else {
+        const doc = document as any;
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          await doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          await doc.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn("Fullscreen toggle error:", err);
+    }
+  };
 
   const [kopSettings, setKopSettings] = useState<KopSettings>(() => {
     const saved = localStorage.getItem('sipak_kop_settings');
@@ -1866,6 +1955,28 @@ export default function App() {
         <div className="bg-slate-900/60 backdrop-blur-md border-b border-slate-800/40 py-3 text-center text-[10px] tracking-widest font-mono text-teal-400 z-10 relative">
           SISTEM KEAMANAN TERINTEGRASI • CABANG DINAS PENDIDIKAN WILAYAH XIII
         </div>
+
+        {/* Floating Quick Controls on Login: Theme & Fullscreen (Icon Only) */}
+        <div className="absolute top-2.5 right-3.5 z-30 flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md border border-slate-800/80 p-1 rounded-xl shadow-lg">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+            className="p-1.5 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            aria-label="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-300" />}
+          </button>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Keluar Layar Penuh (Esc)" : "Layar Penuh (Fullscreen)"}
+            className="p-1.5 text-slate-300 hover:text-teal-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            aria-label="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4 text-teal-400" /> : <Maximize className="w-4 h-4 text-slate-300" />}
+          </button>
+        </div>
  
         {/* Login main frame */}
         <div className="max-w-md w-full mx-auto px-4 py-12 flex-1 flex flex-col justify-center z-10 relative">
@@ -1995,13 +2106,37 @@ export default function App() {
               <span className="block text-[10px] font-bold text-slate-300">CABIN DISDIK JABAR XIII</span>
             </div>
           </div>
-          <button 
-            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
-            className="p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg focus:outline-none"
-            title="Buka Menu"
-          >
-            {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Theme Toggle Button (Icon Only) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+              className="p-1.5 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              aria-label="Toggle Theme"
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-300" />}
+            </button>
+
+            {/* Fullscreen Toggle Button (Icon Only) */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+              className="p-1.5 text-slate-300 hover:text-teal-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              aria-label="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4 text-teal-400" /> : <Maximize className="w-4 h-4 text-slate-300" />}
+            </button>
+
+            <button 
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+              className="p-1.5 bg-slate-800 border border-slate-700 text-slate-300 rounded-lg focus:outline-none cursor-pointer"
+              title="Buka Menu"
+            >
+              {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Sidebar Overlay/Drawer */}
@@ -2046,23 +2181,47 @@ export default function App() {
                 <span className="block text-[9px] text-slate-400 font-medium leading-tight truncate">CDP WILAYAH XIII JABAR</span>
               </div>
             </div>
-            {user.role === 'super_admin' && (
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Theme Toggle Button (Icon Only) */}
               <button
                 type="button"
-                onClick={() => {
-                  setLogoPreviewUrl(null);
-                  setLogoUploadError(null);
-                  setCustomLogoUrlInput('');
-                  setTempLoginLogoHeight(loginLogoHeight);
-                  setTempSidebarLogoHeight(sidebarLogoHeight);
-                  setLogoModalOpen(true);
-                }}
-                title="Atur Logo & Ukuran Si-KAPITA"
-                className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+                className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                aria-label="Toggle Theme"
               >
-                <Camera className="w-4 h-4" />
+                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-400" />}
               </button>
-            )}
+
+              {/* Fullscreen Toggle Button (Icon Only) */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                aria-label="Toggle Fullscreen"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4 text-teal-400" /> : <Maximize className="w-4 h-4 text-slate-400" />}
+              </button>
+
+              {user.role === 'super_admin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLogoPreviewUrl(null);
+                    setLogoUploadError(null);
+                    setCustomLogoUrlInput('');
+                    setTempLoginLogoHeight(loginLogoHeight);
+                    setTempSidebarLogoHeight(sidebarLogoHeight);
+                    setLogoModalOpen(true);
+                  }}
+                  title="Atur Logo & Ukuran Si-KAPITA"
+                  className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* User Profile Info section in Sidebar */}
@@ -2301,10 +2460,31 @@ export default function App() {
                   : "SISTEM INFORMASI KONVERSI ANGKA KREDIT PENDIDIK & TENAGA KEPENDIDIKAN"}
               </span>
             </div>
-            <div className="flex items-center gap-2 font-mono text-[9px]">
+            <div className="flex items-center gap-3 font-mono text-[9px]">
               <span className="text-emerald-400 font-bold">{user.displayName || user.username}</span>
               <span>•</span>
               <span>KCD Wil. XIII Ciamis Pangandaran Banjar</span>
+              <div className="h-3.5 w-px bg-slate-750"></div>
+              {/* Theme Toggle Button (Icon Only) */}
+              <button
+                type="button"
+                onClick={toggleTheme}
+                title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+                className="p-1 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                aria-label="Toggle Theme"
+              >
+                {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-slate-300" />}
+              </button>
+              {/* Fullscreen Toggle Button (Icon Only) */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Keluar Layar Penuh (Esc)" : "Layar Penuh (Fullscreen)"}
+                className="p-1 text-slate-400 hover:text-teal-400 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                aria-label="Toggle Fullscreen"
+              >
+                {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-teal-400" /> : <Maximize className="w-3.5 h-3.5 text-slate-300" />}
+              </button>
             </div>
           </div>
 
@@ -3216,6 +3396,30 @@ export default function App() {
           <span>PORTAL Si-KAPITA • PEMBANGUNAN DOKUMEN PAK RESMI</span>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 border-r border-teal-850 pr-3">
+            {/* Theme Toggle Button (Icon Only) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+              className="p-1 text-teal-300 hover:text-amber-300 hover:bg-teal-900 rounded-md transition-colors cursor-pointer"
+              aria-label="Toggle Theme"
+            >
+              {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-300" /> : <Moon className="w-3.5 h-3.5 text-teal-200" />}
+            </button>
+
+            {/* Fullscreen Toggle Button (Icon Only) */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Keluar Layar Penuh (Esc)" : "Layar Penuh (Fullscreen)"}
+              className="p-1 text-teal-300 hover:text-white hover:bg-teal-900 rounded-md transition-colors cursor-pointer"
+              aria-label="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5 text-teal-300" /> : <Maximize className="w-3.5 h-3.5 text-teal-200" />}
+            </button>
+          </div>
+
           <span>Petugas: <strong>{user.displayName || user.username}</strong></span>
           <button 
             onClick={handleLogout}
