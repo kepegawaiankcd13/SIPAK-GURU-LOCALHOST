@@ -118,18 +118,46 @@ export async function fetchTeachersFromMysql(): Promise<any[]> {
   return [];
 }
 
-export async function saveTeacherToMysql(teacher: any): Promise<boolean> {
+export interface SaveResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+}
+
+export async function saveTeacherToMysqlDetailed(teacher: any): Promise<SaveResult> {
   try {
     const res = await fetch('/api/mysql/teachers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(teacher)
     });
-    return res.ok;
-  } catch (err) {
+    const rawText = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (res.ok) {
+      return { ok: true, id: parsed?.id || teacher?.id };
+    }
+
+    const serverMsg =
+      parsed?.error ||
+      parsed?.message ||
+      (rawText && rawText.length < 220 ? rawText.replace(/<[^>]*>/g, '').trim() : '') ||
+      `HTTP ${res.status} ${res.statusText || 'Error'}`;
+    return { ok: false, error: serverMsg };
+  } catch (err: any) {
     console.warn('Gagal menyimpan guru ke MySQL:', err);
-    return false;
+    return { ok: false, error: err?.message || 'Tidak dapat terhubung ke server API.' };
   }
+}
+
+export async function saveTeacherToMysql(teacher: any): Promise<boolean> {
+  const result = await saveTeacherToMysqlDetailed(teacher);
+  return result.ok;
 }
 
 export async function deleteTeacherFromMysql(teacherId: string): Promise<boolean> {

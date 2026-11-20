@@ -35,6 +35,48 @@ export function getDbPool(): mysql.Pool {
   return pool;
 }
 
+let isMysqlOnline: boolean | null = null;
+let lastCheckTime = 0;
+
+/**
+ * Checks if MySQL server is reachable with a short timeout and cached status.
+ * Prevents stalling and ETIMEDOUT logs when running in environments without local MySQL.
+ */
+export async function isMysqlAvailable(forceFresh = false): Promise<boolean> {
+  const now = Date.now();
+  if (!forceFresh && isMysqlOnline !== null && now - lastCheckTime < 10000) {
+    return isMysqlOnline;
+  }
+
+  try {
+    const conn = await Promise.race([
+      mysql.createConnection({
+        host: DB_CONFIG.host,
+        port: DB_CONFIG.port,
+        user: DB_CONFIG.user,
+        password: DB_CONFIG.password,
+        connectTimeout: 400
+      }),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 450))
+    ]);
+
+    if (conn) {
+      await conn.end();
+      isMysqlOnline = true;
+      lastCheckTime = now;
+      return true;
+    }
+  } catch {
+    isMysqlOnline = false;
+    lastCheckTime = now;
+    return false;
+  }
+
+  isMysqlOnline = false;
+  lastCheckTime = now;
+  return false;
+}
+
 export interface DbStatusResponse {
   connected: boolean;
   host: string;
@@ -53,6 +95,10 @@ export interface DbStatusResponse {
  */
 export async function autoInitializeMysql(): Promise<boolean> {
   if (dbInitialized) return true;
+  const reachable = await isMysqlAvailable();
+  if (!reachable) {
+    return false;
+  }
   try {
     // 1. Connect to MySQL server without database first to ensure database exists (if permitted)
     try {
@@ -278,6 +324,20 @@ export async function autoInitializeMysql(): Promise<boolean> {
  * Tests MySQL connectivity without crashing the server.
  */
 export async function checkDbConnection(): Promise<DbStatusResponse> {
+  const isOnline = await isMysqlAvailable(true);
+  if (!isOnline) {
+    return {
+      connected: false,
+      host: DB_CONFIG.host,
+      port: DB_CONFIG.port,
+      database: DB_CONFIG.database,
+      user: DB_CONFIG.user,
+      message: 'Belum terhubung ke MySQL XAMPP. Penyimpanan data aktif dialihkan ke file lokal (data/sipak_db.json).',
+      tables: [],
+      tablesCount: 0,
+      timestamp: new Date().toISOString()
+    };
+  }
   try {
     const p = getDbPool();
     const [rows] = await p.query<any[]>('SELECT 1 + 1 AS solution');

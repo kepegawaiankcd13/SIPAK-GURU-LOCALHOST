@@ -90,5 +90,19 @@
     "tteTextJabatan1": "KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII",
     "tteTextJabatan2": "DINAS PENDIDIKAN PROVINSI JAWA BARAT"
   },
-  "logs": []
+  "logs": [
+    {
+      "id": "4c3qtdhmwodrbnj",
+      "timestamp": "2026-11-20T02:49:02.911Z",
+      "error": "Unhandled Promise Rejection: WebSocket closed without opened.",
+      "operationType": "general",
+      "path": null,
+      "userId": "admin",
+      "email": "Super Admin Dinas Pendidikan KCD XIII",
+      "browser": "Chrome 157",
+      "severity": "error",
+      "resolved": 0,
+      "resolutionNotes": null
+    }
+  ]
 }

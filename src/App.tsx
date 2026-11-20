@@ -55,6 +55,7 @@ import { toast, swal } from "./lib/toast";
 import { checkAndMigrateLegacyLocalStorage } from "./lib/backupService";
 import { 
   saveTeacherToMysql, 
+  saveTeacherToMysqlDetailed,
   deleteTeacherFromMysql, 
   saveEvaluationToMysql, 
   deleteEvaluationFromMysql, 
@@ -170,6 +171,8 @@ export default function App() {
   });
 
   const [isImporting, setIsImporting] = useState(false);
+  const [isImportingProcessing, setIsImportingProcessing] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [teacherEvalsCache, setTeacherEvalsCache] = useState<Record<string, number>>({});
   const [teacherPendCache, setTeacherPendCache] = useState<Record<string, number>>({});
 
@@ -926,13 +929,16 @@ export default function App() {
         createdBy: user.username
       };
 
-      await saveTeacherToMysql(data);
+      const saveRes = await saveTeacherToMysqlDetailed(data);
+      if (!saveRes.ok) {
+        throw new Error(saveRes.error || "Gagal menyimpan data guru ke server database.");
+      }
 
       setTeachers(prev => [data, ...prev.filter(t => t.id !== teacherId)]);
 
       swal.fire({
         title: "Pendaftaran Sukses!",
-        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database MySQL XAMPP. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
+        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
         icon: "success",
         confirmButtonText: "Mulai Lengkapi Data"
       });
@@ -958,7 +964,7 @@ export default function App() {
     }
   };
 
-  // Export Teachers to CSV
+  // Export Teachers to CSV (using Blob to safely handle #, &, %, and UTF-8 BOM)
   const handleExportTeachersToCSV = () => {
     const headers = [
       "Nama Lengkap",
@@ -984,16 +990,20 @@ export default function App() {
       t.school || ""
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const csvBody = [
+      headers.map(h => `"${h}"`).join(","),
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\r\n");
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(["\uFEFF" + csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `sipak_guru_pns_${new Date().toISOString().slice(0,10)}.csv`);
+    link.href = url;
+    link.download = `sikapita_guru_pns_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Download standard CSV import template
@@ -1019,72 +1029,160 @@ export default function App() {
       "25.5",
       "200",
       "C45678912",
-      user?.school || "SMAN 1 Kawali"
+      user?.school && user.school !== "ALL" ? user.school : "SMAN 1 KAWALI"
     ];
 
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(","), sampleRow.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")].join("\n");
+    const csvBody = [
+      headers.map(h => `"${h}"`).join(","),
+      sampleRow.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
+    ].join("\r\n");
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob(["\uFEFF" + csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "template_import_guru_sipak.csv");
+    link.href = url;
+    link.download = "template_import_guru_sikapita.csv";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  // Helper parser for simple CSV strings
-  const parseCSV = (text: string) => {
-    const lines = text.split(/\r?\n/);
-    if (lines.length <= 1) return [];
-    
-    const results = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      
-      const row: string[] = [];
-      let insideQuote = false;
-      let currentField = "";
-      
-      for (let c = 0; c < line.length; c++) {
-        const char = line[c];
-        if (char === '"') {
-          insideQuote = !insideQuote;
-        } else if (char === ',' && !insideQuote) {
-          row.push(currentField.trim());
+  // RFC-4180 CSV parser supporting UTF-8 BOM, comma (,), semicolon (;) from Excel ID, and tab (\t)
+  const parseCSV = (rawText: string): string[][] => {
+    const text = rawText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const firstNonEmptyLine = text.split("\n").find(l => l.trim().length > 0) || "";
+    if (!firstNonEmptyLine) return [];
+
+    // Auto-detect delimiter outside quotes from header/first line
+    let commaCount = 0;
+    let semiCount = 0;
+    let tabCount = 0;
+    let inQuoteDetect = false;
+    for (let i = 0; i < firstNonEmptyLine.length; i++) {
+      const ch = firstNonEmptyLine[i];
+      if (ch === '"') inQuoteDetect = !inQuoteDetect;
+      else if (!inQuoteDetect) {
+        if (ch === ',') commaCount++;
+        else if (ch === ';') semiCount++;
+        else if (ch === '\t') tabCount++;
+      }
+    }
+    const delimiter = semiCount > commaCount && semiCount >= tabCount
+      ? ';'
+      : tabCount > commaCount
+        ? '\t'
+        : ',';
+
+    const allRows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = "";
+    let insideQuote = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (insideQuote) {
+        if (ch === '"' && next === '"') {
+          currentField += '"';
+          i++;
+        } else if (ch === '"') {
+          insideQuote = false;
+        } else {
+          currentField += ch;
+        }
+      } else {
+        if (ch === '"' && currentField.trim() === "") {
+          insideQuote = true;
+          currentField = "";
+        } else if (ch === delimiter) {
+          currentRow.push(currentField.trim());
+          currentField = "";
+        } else if (ch === '\n') {
+          currentRow.push(currentField.trim());
+          if (currentRow.some(cell => cell.length > 0)) {
+            allRows.push(currentRow);
+          }
+          currentRow = [];
           currentField = "";
         } else {
-          currentField += char;
+          currentField += ch;
         }
       }
-      row.push(currentField.trim());
-      
-      const cleanRow = row.map(f => f.replace(/^["']|["']$/g, "").trim());
-      if (cleanRow.length === 0 || !cleanRow[0]) continue;
-      
-      results.push(cleanRow);
     }
-    return results;
+
+    // Flush trailing field/row
+    currentRow.push(currentField.trim());
+    if (currentRow.some(cell => cell.length > 0)) {
+      allRows.push(currentRow);
+    }
+
+    if (allRows.length === 0) return [];
+
+    // Skip header row if row 0 looks like column headers
+    const firstCol = (allRows[0][0] || "").toLowerCase();
+    const secondCol = (allRows[0][1] || "").toLowerCase();
+    const looksLikeHeader =
+      firstCol.includes("nama") ||
+      secondCol.includes("nip") ||
+      firstCol === "no";
+
+    return looksLikeHeader ? allRows.slice(1) : allRows;
   };
 
-  // Handle local CSV import parsing and saving to Firestore
+  // Normalize Golongan text (e.g. "iii/c" or "III / C" -> "III/c")
+  const normalizeGolongan = (raw: string, fallback: GolonganID): GolonganID => {
+    const cleaned = (raw || "").replace(/\s+/g, "").toUpperCase();
+    const found = GOLONGAN_LIST.find(g => g.id.toUpperCase() === cleaned);
+    return found ? found.id : fallback;
+  };
+
+  // Handle CSV import parsing and saving to MySQL (with cPanel PHP & Node support)
   const handleImportCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const inputEl = event.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
 
+    // Reset input value so the same file can be re-uploaded after edits
+    inputEl.value = "";
+
+    if (file.size > 5 * 1024 * 1024) {
+      swal.fire({
+        title: "File Terlalu Besar!",
+        text: "Ukuran maksimal file CSV adalah 5MB.",
+        icon: "warning"
+      });
+      return;
+    }
+
+    setIsImportingProcessing(true);
+    setImportProgress(null);
+
     const reader = new FileReader();
+    reader.onerror = () => {
+      setIsImportingProcessing(false);
+      setImportProgress(null);
+      swal.fire({
+        title: "Gagal Membaca File!",
+        text: "Browser gagal membaca file CSV yang dipilih. Pastikan file tidak rusak atau terkunci aplikasi lain.",
+        icon: "error"
+      });
+    };
+
     reader.onload = async (e) => {
       const text = e.target?.result as string;
-      if (!text) return;
+      if (!text) {
+        setIsImportingProcessing(false);
+        return;
+      }
 
       try {
         const rows = parseCSV(text);
         if (rows.length === 0) {
           swal.fire({
-            title: "File Kosong!",
-            text: "Tidak ada data guru yang valid terbaca dari file CSV tersebut.",
+            title: "File Kosong / Format Tidak Dikenali!",
+            text: "Tidak ada baris data guru yang terbaca dari file CSV tersebut. Pastikan menggunakan template CSV dengan pemisah koma (,) atau titik koma (;).",
             icon: "warning"
           });
           return;
@@ -1092,34 +1190,71 @@ export default function App() {
 
         let importCount = 0;
         let skippedCount = 0;
+        let failCount = 0;
+        const skipReasons: string[] = [];
+        const errorReasons: string[] = [];
 
-        for (const row of rows) {
-          const name = row[0] || "";
-          const nip = (row[1] || "").replace(/\s+/g, "");
+        setImportProgress({ current: 0, total: rows.length });
 
-          if (!name || nip.length < 10) {
+        for (let idx = 0; idx < rows.length; idx++) {
+          const row = rows[idx];
+          setImportProgress({ current: idx + 1, total: rows.length });
+
+          const name = (row[0] || "").trim();
+          const nip = (row[1] || "").trim().replace(/^'+/, "").replace(/\s+/g, "");
+
+          if (!name) {
             skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2}: Nama kosong`);
             continue;
           }
 
-          const gender = (row[2] === "Perempuan" ? "Perempuan" : "Laki-Laki") as "Laki-Laki" | "Perempuan";
-          const currentGolongan = (row[3] || "III/c") as GolonganID;
-          const targetGolongan = (row[4] || "III/d") as GolonganID;
-          const akIntegrasi2022 = Number(row[5]) || 0;
-          const baseAK = Number(row[6]) || 200;
-          const karpegNumber = row[7] || "";
-          
-          // Tenant protection boundaries
-          const assignedSchool = user?.role === 'school_admin' ? user.school : (row[8] || "SMAN 1 KAWALI");
+          if (/e\+/i.test(nip)) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2} (${name}): NIP terbaca notasi ilmiah Excel (${nip}). Format kolom NIP sebagai Text di Excel.`);
+            continue;
+          }
 
-          const matchedSchool = schoolsList.find(s => s.name.toUpperCase().trim() === assignedSchool.toUpperCase().trim());
+          if (nip.length < 10) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2} (${name}): NIP tidak valid/kurang dari 10 karakter`);
+            continue;
+          }
+
+          const rawGender = (row[2] || "").trim().toLowerCase();
+          const gender: "Laki-Laki" | "Perempuan" =
+            rawGender === "p" || rawGender.includes("perempuan") || rawGender.includes("wanita") || rawGender === "female"
+              ? "Perempuan"
+              : "Laki-Laki";
+
+          const currentGolongan = normalizeGolongan(row[3] || "", "III/c");
+          const targetGolongan = normalizeGolongan(row[4] || "", "III/d");
+          const akIntegrasi2022 = parseFloatValue(row[5]);
+          const parsedBaseAK = parseFloatValue(row[6]);
+          const baseAK = parsedBaseAK > 0 ? parsedBaseAK : (GOLONGAN_BASE_VALS[currentGolongan] || 200);
+          const karpegNumber = (row[7] || "").trim().replace(/^'+/, "");
+
+          // Tenant protection boundaries
+          const assignedSchool =
+            user?.role === 'school_admin' && user.school && user.school !== 'ALL'
+              ? user.school
+              : ((row[8] || "").trim() || (user?.school && user.school !== 'ALL' ? user.school : "SMAN 1 KAWALI"));
+
+          const normalizedSchool = assignedSchool.toUpperCase().trim();
+          const matchedSchool = schoolsList.find(s => s.name.toUpperCase().trim() === normalizedSchool);
           const principalName = matchedSchool?.principalName || "";
           const principalNip = matchedSchool?.principalNip || "";
 
+          // Deterministic/existing ID required by api.php and server.ts
+          const existingTeacher = teachers.find(t => t.nip.replace(/\s+/g, "") === nip);
+          const cleanNipId = nip.replace(/[^a-zA-Z0-9_-]/g, "");
+          const teacherId = existingTeacher?.id || (cleanNipId ? `teacher_${cleanNipId.slice(0, 48)}` : `teacher_${Date.now()}_${idx}`);
+
           const teacherDoc = {
-            name: name.toUpperCase().trim(),
-            nip: nip,
-            school: assignedSchool.toUpperCase().trim(),
+            id: teacherId,
+            name: name.toUpperCase(),
+            nip,
+            school: normalizedSchool,
             currentGolongan,
             targetGolongan,
             baseAK,
@@ -1127,12 +1262,12 @@ export default function App() {
             akPendidikan: 0,
             ratingSKP: "Baik" as const,
             workDurationYears: 3,
-            karpegNumber: karpegNumber.toUpperCase().trim(),
+            karpegNumber: karpegNumber.toUpperCase(),
             birthPlaceDate: "",
             gender,
             tmtCurrentPangkat: "",
             tmtCurrentJabatan: "",
-            unitKerja: `${assignedSchool.toUpperCase().trim()} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`,
+            unitKerja: `${normalizedSchool} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`,
             instansiBiro: "PEMERINTAH PROVINSI JAWA BARAT",
             nomorSuratKonversi: "",
             nomorSuratAkumulasi: "",
@@ -1140,7 +1275,7 @@ export default function App() {
             tempatDitetapkan: "Bandung",
             tanggalPenetapan: "",
             pejabatPenilaiTitle: matchedSchool ? "KEPALA SEKOLAH" : "KEPALA CABANG PENDIDIKAN",
-            pejabatPenilaiInstansi: matchedSchool ? assignedSchool.toUpperCase().trim() : "PROVINSI JAWA BARAT",
+            pejabatPenilaiInstansi: matchedSchool ? normalizedSchool : "PROVINSI JAWA BARAT",
             pejabatPenilaiNama: principalName,
             pejabatPenilaiNip: principalNip,
             pejabatPenilaiGolongan: "",
@@ -1148,25 +1283,55 @@ export default function App() {
             createdBy: user?.username || "admin"
           };
 
-          await saveTeacherToMysql(teacherDoc);
-          importCount++;
+          const saveResult = await saveTeacherToMysqlDetailed(teacherDoc);
+          if (saveResult.ok) {
+            importCount++;
+          } else {
+            failCount++;
+            if (errorReasons.length < 3) {
+              errorReasons.push(`${name}: ${saveResult.error || "Gagal menyimpan ke server"}`);
+            }
+          }
         }
 
         await loadTeachers();
 
-        swal.fire({
-          title: "Impor Berhasil!",
-          text: `Berhasil mengimpor ${importCount} data guru ke database MySQL XAMPP.${skippedCount > 0 ? ` (${skippedCount} baris dilewati karena format data tidak valid/kosong)` : ""}`,
-          icon: "success",
-          confirmButtonText: "Selesai"
-        });
-        setIsImporting(false);
+        if (importCount > 0 && failCount === 0) {
+          swal.fire({
+            title: "Impor Berhasil!",
+            text: `Berhasil mengimpor ${importCount} data guru ke database MySQL.${skippedCount > 0 ? ` (${skippedCount} baris dilewati: ${skipReasons.join("; ")})` : ""}`,
+            icon: "success",
+            confirmButtonText: "Selesai"
+          });
+          setIsImporting(false);
+        } else if (importCount > 0 && failCount > 0) {
+          swal.fire({
+            title: "Impor Sebagian Berhasil",
+            text: `${importCount} data guru berhasil disimpan, namun ${failCount} data gagal disimpan (${errorReasons.join(" | ")}).${skippedCount > 0 ? ` ${skippedCount} baris dilewati.` : ""}`,
+            icon: "warning",
+            confirmButtonText: "Mengerti"
+          });
+        } else {
+          const detailParts = [
+            failCount > 0 ? `${failCount} gagal disimpan ke server (${errorReasons.join(" | ")})` : "",
+            skippedCount > 0 ? `${skippedCount} baris dilewati (${skipReasons.join(" | ")})` : ""
+          ].filter(Boolean);
+          swal.fire({
+            title: "Impor Gagal!",
+            text: `Tidak ada data guru yang berhasil disimpan ke database. ${detailParts.join(". ")}`,
+            icon: "error",
+            confirmButtonText: "Tutup"
+          });
+        }
       } catch (err: any) {
         swal.fire({
           title: "Impor Gagal!",
           text: "Terjadi kesalahan saat memproses data CSV: " + (err.message || String(err)),
           icon: "error"
         });
+      } finally {
+        setIsImportingProcessing(false);
+        setImportProgress(null);
       }
     };
     reader.readAsText(file);
@@ -1285,11 +1450,14 @@ export default function App() {
     setTeachers(prev => prev.map(t => t.id === selectedTeacherId ? { ...t, ...parsedUpdated } : t));
 
     try {
-      await saveTeacherToMysql({
+      const saveRes = await saveTeacherToMysqlDetailed({
         id: selectedTeacherId,
         ...parsedUpdated
       });
-      toast.success("Data pegawai berhasil disimpan ke database MySQL XAMPP.");
+      if (!saveRes.ok) {
+        throw new Error(saveRes.error || "Gagal menyimpan data pegawai ke server.");
+      }
+      toast.success("Data pegawai berhasil disimpan ke database.");
     } catch (err: any) {
       console.error("MySQL update failed:", err);
       toast.error("Gagal menyimpan ke MySQL: " + (err.message || String(err)));
@@ -2155,10 +2323,11 @@ export default function App() {
           ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
         `}>
           {/* Sidebar Top Brand Header */}
-          <div className="p-4 border-b border-slate-850 flex items-center justify-between bg-slate-950/30">
-            <div className="flex items-center gap-3 min-w-0">
+          <div className="p-4 border-b border-slate-850 bg-slate-950/40 space-y-3">
+            {/* Row 1: Logo & Application Title (Full width, completely unblocked) */}
+            <div className="flex items-center gap-3">
               <div 
-                style={{ height: `${sidebarLogoHeight}px` }}
+                style={{ height: `${Math.min(sidebarLogoHeight, 52)}px` }}
                 className="flex items-center justify-center shrink-0 transition-all duration-300"
               >
                 <img 
@@ -2170,57 +2339,72 @@ export default function App() {
                       target.src = DEFAULT_APP_LOGO;
                     }
                   }}
-                  style={{ height: `${sidebarLogoHeight}px`, width: 'auto', maxHeight: '95px' }}
-                  className="max-w-[95px] object-contain transition-all duration-300 drop-shadow-md"
+                  style={{ height: `${Math.min(sidebarLogoHeight, 52)}px`, width: 'auto' }}
+                  className="max-w-[56px] object-contain transition-all duration-300 drop-shadow-md"
                   referrerPolicy="no-referrer"
                 />
               </div>
-              <div className="min-w-0">
-                <span className="block text-[8px] font-black tracking-widest text-emerald-400 uppercase truncate">PORTAL ADMINISTRASI</span>
-                <h2 className="text-sm font-extrabold text-white tracking-tight uppercase truncate">Si-KAPITA</h2>
-                <span className="block text-[9px] text-slate-400 font-medium leading-tight truncate">CDP WILAYAH XIII JABAR</span>
+              <div className="min-w-0 flex-1">
+                <span className="block text-[8px] font-black tracking-widest text-emerald-400 uppercase">
+                  PORTAL ADMINISTRASI
+                </span>
+                <h2 className="text-base font-black text-white tracking-tight uppercase leading-tight">
+                  Si-KAPITA
+                </h2>
+                <span className="block text-[9px] text-slate-400 font-medium leading-tight">
+                  CDP WILAYAH XIII JABAR
+                </span>
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              {/* Theme Toggle Button (Icon Only) */}
-              <button
-                type="button"
-                onClick={toggleTheme}
-                title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
-                className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                aria-label="Toggle Theme"
-              >
-                {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-400" />}
-              </button>
 
-              {/* Fullscreen Toggle Button (Icon Only) */}
-              <button
-                type="button"
-                onClick={toggleFullscreen}
-                title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
-                className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                aria-label="Toggle Fullscreen"
-              >
-                {isFullscreen ? <Minimize className="w-4 h-4 text-teal-400" /> : <Maximize className="w-4 h-4 text-slate-400" />}
-              </button>
-
-              {user.role === 'super_admin' && (
+            {/* Row 2: Quick Control Strip (Icon-Only buttons, clearly separated without crowding the title) */}
+            <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800/80 rounded-xl px-2.5 py-1.5 shadow-inner">
+              <span className="text-[9px] font-mono font-bold text-slate-400 tracking-wider">
+                AKSES CEPAT
+              </span>
+              <div className="flex items-center gap-1.5">
+                {/* Theme Toggle Button (Icon Only) */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setLogoPreviewUrl(null);
-                    setLogoUploadError(null);
-                    setCustomLogoUrlInput('');
-                    setTempLoginLogoHeight(loginLogoHeight);
-                    setTempSidebarLogoHeight(sidebarLogoHeight);
-                    setLogoModalOpen(true);
-                  }}
-                  title="Atur Logo & Ukuran Si-KAPITA"
-                  className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors shrink-0 cursor-pointer"
+                  onClick={toggleTheme}
+                  title={theme === 'dark' ? "Mode Terang (Light Mode)" : "Mode Gelap (Dark Mode)"}
+                  className="p-1.5 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Toggle Theme"
                 >
-                  <Camera className="w-4 h-4" />
+                  {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-300" />}
                 </button>
-              )}
+
+                {/* Fullscreen Toggle Button (Icon Only) */}
+                <button
+                  type="button"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "Keluar Layar Penuh (Esc)" : "Layar Penuh (Fullscreen)"}
+                  className="p-1.5 text-slate-300 hover:text-teal-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                  aria-label="Toggle Fullscreen"
+                >
+                  {isFullscreen ? <Minimize className="w-4 h-4 text-teal-400" /> : <Maximize className="w-4 h-4 text-slate-300" />}
+                </button>
+
+                {/* Atur Logo Button (Super Admin Khusus - Icon Only) */}
+                {user.role === 'super_admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoPreviewUrl(null);
+                      setLogoUploadError(null);
+                      setCustomLogoUrlInput('');
+                      setTempLoginLogoHeight(loginLogoHeight);
+                      setTempSidebarLogoHeight(sidebarLogoHeight);
+                      setLogoModalOpen(true);
+                    }}
+                    title="Atur Logo & Ukuran Si-KAPITA"
+                    className="p-1.5 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    aria-label="Atur Logo"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2569,33 +2753,48 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                     <div className="space-y-2">
                       <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                        Anda dapat mengimpor data guru secara massal menggunakan file Excel/CSV. 
-                        Pastikan kolom di file Anda sesuai dengan format template kami agar proses pemetaan data berjalan sempurna.
-                        Pemberitahuan: jika Anda masuk sebagai Administrator Sekolah, nama sekolah pada file impor akan otomatis disesuaikan secara aman dengan sekolah Anda.
+                        Anda dapat mengimpor data guru secara massal menggunakan file Excel/CSV (mendukung pemisah koma <code className="px-1 bg-slate-100 rounded">,</code> maupun titik koma <code className="px-1 bg-slate-100 rounded">;</code> dari Excel Indonesia). 
+                        Pastikan kolom NIP diformat sebagai <strong>Text</strong> agar tidak berubah menjadi format ilmiah Excel (mis. <code className="px-1 bg-slate-100 rounded">1.98E+17</code>).
                       </p>
                       
                       <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           type="button"
                           onClick={handleDownloadTemplateCSV}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-705 text-slate-750 font-bold text-[11px] rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          disabled={isImportingProcessing}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
                         >
-                          <Download className="w-3.5 h-3.5 text-teal-650 text-teal-600" /> Download Template CSV
+                          <Download className="w-3.5 h-3.5 text-teal-600" /> Download Template CSV
                         </button>
                       </div>
                     </div>
 
-                    <div className="border border-dashed border-emerald-300 bg-emerald-55 bg-emerald-50/20 p-6 rounded-xl text-center space-y-3 relative hover:bg-emerald-50/50 transition-colors">
-                      <Upload className="w-8 h-8 text-emerald-500 mx-auto animate-bounce" />
-                      <div>
-                        <span className="text-xs font-bold text-slate-700 block">Pilih file CSV Guru Anda</span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">Maksimal ukuran 5MB (.csv)</span>
-                      </div>
+                    <div className="border border-dashed border-emerald-300 bg-emerald-50/20 p-6 rounded-xl text-center space-y-3 relative hover:bg-emerald-50/50 transition-colors">
+                      {isImportingProcessing ? (
+                        <>
+                          <RefreshCw className="w-8 h-8 text-emerald-600 mx-auto animate-spin" />
+                          <div>
+                            <span className="text-xs font-bold text-emerald-700 block">
+                              Sedang Mengimpor Data Guru{importProgress ? ` (${importProgress.current}/${importProgress.total})` : "..."}
+                            </span>
+                            <span className="text-[10px] text-slate-500 block mt-0.5">Mohon tunggu hingga proses selesai</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-8 h-8 text-emerald-500 mx-auto animate-bounce" />
+                          <div>
+                            <span className="text-xs font-bold text-slate-700 block">Pilih file CSV Guru Anda</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">Maksimal ukuran 5MB (.csv)</span>
+                          </div>
+                        </>
+                      )}
                       <input
                         type="file"
-                        accept=".csv"
+                        accept=".csv,text/csv"
+                        disabled={isImportingProcessing}
                         onChange={handleImportCSV}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                       />
                     </div>
                   </div>

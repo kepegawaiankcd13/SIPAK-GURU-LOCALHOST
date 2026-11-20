@@ -396,12 +396,38 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
         exit;
     }
     if ($method === 'POST') {
-        $t = $body;
-        if (empty($t['id']) || empty($t['name']) || empty($t['nip'])) {
+        $t = is_array($body) ? $body : [];
+        $teacherName = trim((string)($t['name'] ?? ''));
+        $teacherNip = preg_replace('/\s+/', '', trim((string)($t['nip'] ?? '')));
+
+        if ($teacherName === '' || $teacherNip === '') {
             http_response_code(400);
-            echo json_encode(['error' => 'ID, Nama, dan NIP guru wajib diisi.']);
+            echo json_encode(['error' => 'Nama dan NIP guru wajib diisi.']);
             exit;
         }
+
+        $teacherId = trim((string)($t['id'] ?? ''));
+        if ($teacherId === '') {
+            $cleanNipId = preg_replace('/[^a-zA-Z0-9_-]/', '', $teacherNip);
+            $teacherId = $cleanNipId !== '' ? ('teacher_' . substr($cleanNipId, 0, 48)) : uniqid('teacher_');
+        } else {
+            $teacherId = substr($teacherId, 0, 64);
+        }
+
+        $rawGender = strtolower(trim((string)($t['gender'] ?? '')));
+        $gender = ($rawGender === 'perempuan' || $rawGender === 'p' || $rawGender === 'wanita') ? 'Perempuan' : 'Laki-Laki';
+
+        $rawStatus = strtolower(trim((string)($t['pejabatPenilaiStatus'] ?? 'definitif')));
+        $pejabatStatus = in_array($rawStatus, ['definitif', 'plt', 'plh'], true) ? $rawStatus : 'definitif';
+
+        $toFloat = function($v, $default = 0.0) {
+            if ($v === null || $v === '') return (float)$default;
+            $num = str_replace(',', '.', trim((string)$v));
+            return is_numeric($num) ? (float)$num : (float)$default;
+        };
+
+        $createdBy = trim((string)($t['createdBy'] ?? ''));
+        if ($createdBy === '') $createdBy = 'admin';
 
         $sql = "INSERT INTO `teachers` (
             id, name, nip, school, currentGolongan, targetGolongan,
@@ -436,19 +462,60 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
             skPangkatFileLink = VALUES(skPangkatFileLink), pakIntegrasiFileLink = VALUES(pakIntegrasiFileLink),
             ijazahFileLink = VALUES(ijazahFileLink), additionalFileLink = VALUES(additionalFileLink)";
 
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            $t['id'], $t['name'], $t['nip'], $t['school'] ?? '', $t['currentGolongan'] ?? 'III/c', $t['targetGolongan'] ?? 'III/d',
-            $t['baseAK'] ?? 0, $t['akIntegrasi2022'] ?? 0, $t['akPendidikan'] ?? 0, $t['ratingSKP'] ?? 'Baik', $t['workDurationYears'] ?? 0,
-            $t['karpegNumber'] ?? null, $t['birthPlaceDate'] ?? null, $t['gender'] ?? 'Laki-Laki', $t['tmtCurrentPangkat'] ?? null, $t['tmtCurrentJabatan'] ?? null,
-            $t['unitKerja'] ?? null, $t['instansiBiro'] ?? null, $t['nomorSuratKonversi'] ?? null, $t['nomorSuratAkumulasi'] ?? null, $t['nomorSuratPenetapan'] ?? null,
-            $t['tempatDitetapkan'] ?? null, $t['tanggalPenetapan'] ?? null, $t['pejabatPenilaiTitle'] ?? null, $t['pejabatPenilaiInstansi'] ?? null,
-            $t['pejabatPenilaiNama'] ?? null, $t['pejabatPenilaiNip'] ?? null, $t['pejabatPenilaiGolongan'] ?? null, $t['pejabatPenilaiStatus'] ?? 'definitif',
-            $t['signatureType'] ?? 'ttd_basah', $t['ttdBasahType'] ?? 'blank', $t['ttdBasahImageUrl'] ?? null, $t['ttdBasahImageBase64'] ?? null, $t['ttdBasahHeight'] ?? 64,
-            $t['tteLogoType'] ?? 'default', $t['tteLogoUrl'] ?? null, $t['tteLogoBase64'] ?? null, $t['tteTextHeader'] ?? null, $t['tteTextJabatan1'] ?? null, $t['tteTextJabatan2'] ?? null,
-            $t['skPangkatFileLink'] ?? null, $t['pakIntegrasiFileLink'] ?? null, $t['ijazahFileLink'] ?? null, $t['additionalFileLink'] ?? null, $t['createdBy'] ?? 'admin'
-        ]);
-        echo json_encode(['success' => true, 'id' => $t['id']]);
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                $teacherId,
+                substr($teacherName, 0, 255),
+                substr($teacherNip, 0, 50),
+                substr(trim((string)($t['school'] ?? '')), 0, 255),
+                substr(trim((string)($t['currentGolongan'] ?? 'III/c')) ?: 'III/c', 0, 20),
+                substr(trim((string)($t['targetGolongan'] ?? 'III/d')) ?: 'III/d', 0, 20),
+                $toFloat($t['baseAK'] ?? 0, 0),
+                $toFloat($t['akIntegrasi2022'] ?? 0, 0),
+                $toFloat($t['akPendidikan'] ?? 0, 0),
+                substr(trim((string)($t['ratingSKP'] ?? 'Baik')) ?: 'Baik', 0, 50),
+                (int)($t['workDurationYears'] ?? 0),
+                !empty($t['karpegNumber']) ? substr((string)$t['karpegNumber'], 0, 100) : null,
+                !empty($t['birthPlaceDate']) ? substr((string)$t['birthPlaceDate'], 0, 255) : null,
+                $gender,
+                $t['tmtCurrentPangkat'] ?? null,
+                $t['tmtCurrentJabatan'] ?? null,
+                !empty($t['unitKerja']) ? substr((string)$t['unitKerja'], 0, 255) : null,
+                !empty($t['instansiBiro']) ? substr((string)$t['instansiBiro'], 0, 255) : null,
+                $t['nomorSuratKonversi'] ?? null,
+                $t['nomorSuratAkumulasi'] ?? null,
+                $t['nomorSuratPenetapan'] ?? null,
+                $t['tempatDitetapkan'] ?? null,
+                $t['tanggalPenetapan'] ?? null,
+                $t['pejabatPenilaiTitle'] ?? null,
+                $t['pejabatPenilaiInstansi'] ?? null,
+                $t['pejabatPenilaiNama'] ?? null,
+                !empty($t['pejabatPenilaiNip']) ? substr((string)$t['pejabatPenilaiNip'], 0, 50) : null,
+                $t['pejabatPenilaiGolongan'] ?? null,
+                $pejabatStatus,
+                $t['signatureType'] ?? 'ttd_basah',
+                $t['ttdBasahType'] ?? 'blank',
+                $t['ttdBasahImageUrl'] ?? null,
+                $t['ttdBasahImageBase64'] ?? null,
+                (int)($t['ttdBasahHeight'] ?? 64),
+                $t['tteLogoType'] ?? 'default',
+                $t['tteLogoUrl'] ?? null,
+                $t['tteLogoBase64'] ?? null,
+                $t['tteTextHeader'] ?? null,
+                $t['tteTextJabatan1'] ?? null,
+                $t['tteTextJabatan2'] ?? null,
+                $t['skPangkatFileLink'] ?? null,
+                $t['pakIntegrasiFileLink'] ?? null,
+                $t['ijazahFileLink'] ?? null,
+                $t['additionalFileLink'] ?? null,
+                substr($createdBy, 0, 100)
+            ]);
+            echo json_encode(['success' => true, 'id' => $teacherId]);
+        } catch (PDOException $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Gagal menyimpan data guru ke MySQL: ' . $e->getMessage()]);
+        }
         exit;
     }
 }
