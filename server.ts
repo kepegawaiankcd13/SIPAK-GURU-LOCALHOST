@@ -8,6 +8,43 @@ import { readLocalDb, writeLocalDb, type LocalDbData } from "./src/server/fileDb
 
 const currentDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 
+function parseAKNum(val: unknown, decimals = 3, defaultVal = 0): number {
+  if (val === undefined || val === null || val === "") {
+    const f = Math.pow(10, decimals);
+    return Math.round(defaultVal * f) / f;
+  }
+  if (typeof val === "number") {
+    if (!Number.isFinite(val)) return defaultVal;
+    const f = Math.pow(10, decimals);
+    return Math.round((val + (val >= 0 ? 1e-9 : -1e-9)) * f) / f;
+  }
+  let str = String(val).trim().replace(/\s+/g, "");
+  if (!str) return defaultVal;
+  const isNegative = str.startsWith("-");
+  str = str.replace(/[^0-9.,]/g, "");
+  if (!str) return defaultVal;
+
+  const hasDot = str.includes(".");
+  const hasComma = str.includes(",");
+  if (hasDot && hasComma) {
+    if (str.lastIndexOf(",") > str.lastIndexOf(".")) {
+      str = str.replace(/\./g, "").replace(",", ".");
+    } else {
+      str = str.replace(/,/g, "");
+    }
+  } else if (hasComma) {
+    const commaCount = (str.match(/,/g) || []).length;
+    str = commaCount === 1 ? str.replace(",", ".") : str.replace(/,/g, "");
+  } else if (hasDot) {
+    const dotCount = (str.match(/\./g) || []).length;
+    if (dotCount > 1) str = str.replace(/\./g, "");
+  }
+  const parsed = parseFloat((isNegative ? "-" : "") + str);
+  if (!Number.isFinite(parsed)) return defaultVal;
+  const factor = Math.pow(10, decimals);
+  return Math.round((parsed + (parsed >= 0 ? 1e-9 : -1e-9)) * factor) / factor;
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
@@ -157,9 +194,9 @@ async function startServer() {
       jabatanFungsional,
       gender,
       pejabatPenilaiStatus,
-      baseAK: Number(String(raw.baseAK ?? 0).replace(",", ".")) || 0,
-      akIntegrasi2022: Number(String(raw.akIntegrasi2022 ?? 0).replace(",", ".")) || 0,
-      akPendidikan: Number(String(raw.akPendidikan ?? 0).replace(",", ".")) || 0,
+      baseAK: parseAKNum(raw.baseAK, 3, 0),
+      akIntegrasi2022: parseAKNum(raw.akIntegrasi2022, 3, 0),
+      akPendidikan: parseAKNum(raw.akPendidikan, 3, 0),
       workDurationYears: parseInt(String(raw.workDurationYears ?? 0), 10) || 0,
       ttdBasahHeight: parseInt(String(raw.ttdBasahHeight ?? 64), 10) || 64,
       createdBy: String(raw.createdBy || "admin").trim() || "admin"
@@ -276,18 +313,36 @@ async function startServer() {
 
   app.post(["/api/teachers/:id/evaluations", "/api/mysql/teachers/:id/evaluations"], async (req, res) => {
     const teacherId = req.params.id;
-    const ev = req.body;
-    if (!ev.id) {
-      ev.id = `eval_${ev.year || 2024}_${Date.now()}`;
-    }
+    const rawEv = req.body || {};
+    const evId = rawEv.id || `eval_${rawEv.year || 2024}_${Date.now()}`;
+    const coefficient = rawEv.coefficient !== undefined && rawEv.coefficient !== null && rawEv.coefficient !== ""
+      ? parseAKNum(rawEv.coefficient, 3, 25)
+      : 25;
+    const multiplier = rawEv.multiplier !== undefined && rawEv.multiplier !== null && rawEv.multiplier !== ""
+      ? parseAKNum(rawEv.multiplier, 2, 1)
+      : 1;
+    const creditEarned = rawEv.creditEarned !== undefined && rawEv.creditEarned !== null && rawEv.creditEarned !== ""
+      ? parseAKNum(rawEv.creditEarned, 3, 25)
+      : 25;
+    const akPendidikan = parseAKNum(rawEv.akPendidikan, 3, 0);
+
+    const ev = {
+      ...rawEv,
+      id: evId,
+      teacherId,
+      coefficient,
+      multiplier,
+      creditEarned,
+      akPendidikan
+    };
 
     // Local store update
     const local = readLocalDb();
     const idx = local.evaluations.findIndex((item: any) => item.id === ev.id);
     if (idx >= 0) {
-      local.evaluations[idx] = { ...local.evaluations[idx], ...ev, teacherId };
+      local.evaluations[idx] = { ...local.evaluations[idx], ...ev };
     } else {
-      local.evaluations.push({ ...ev, teacherId });
+      local.evaluations.push(ev);
     }
     writeLocalDb(local);
 
@@ -311,7 +366,7 @@ async function startServer() {
         const overrideStr = ev.overrideData ? (typeof ev.overrideData === 'string' ? ev.overrideData : JSON.stringify(ev.overrideData)) : null;
         const values = [
           ev.id, teacherId, ev.year, ev.period || 'Tahunan', ev.rating || 'Baik', ev.level || 'Ahli Muda',
-          ev.coefficient || 25, ev.multiplier || 1, ev.creditEarned || 25, ev.akPendidikan || 0,
+          coefficient, multiplier, creditEarned, akPendidikan,
           ev.notes || null, ev.startDate || null, ev.endDate || null, ev.isCustomRange ? 1 : 0,
           ev.customMonths || 12, ev.skpFileLink || null, ev.evidenceFileLink || null,
           overrideStr, ev.createdBy || 'admin'

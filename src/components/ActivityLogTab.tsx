@@ -10,6 +10,7 @@ import {
   SKP_RATING_MULTIPLIERS,
   getTeacherLevel
 } from '../data/golonganData';
+import { parseAKNumber, roundAK, sumAK } from '../lib/akUtils';
 import { 
   Plus, 
   Trash2, 
@@ -144,13 +145,13 @@ export default function ActivityLogTab({
   const calculatedCredit = useMemo(() => {
     const annualVal = calculatedCoeff * calculatedMultiplier;
     if (isCustomRange) {
-      return (annualVal * customMonths) / 12;
+      return roundAK((annualVal * customMonths) / 12);
     }
     if (period === 'Tahunan') {
-      return annualVal;
+      return roundAK(annualVal);
     } else {
       // Quarterly is 1/4 of annual credit
-      return annualVal / 4;
+      return roundAK(annualVal / 4);
     }
   }, [calculatedCoeff, calculatedMultiplier, period, isCustomRange, customMonths]);
 
@@ -226,7 +227,7 @@ export default function ActivityLogTab({
     e.preventDefault();
 
     const finalPeriod = isCustomRange ? customPeriodLabel : period;
-    const parsedAkPendidikan = parseFloat(akPendidikanInput) || 0;
+    const parsedAkPendidikan = roundAK(parseAKNumber(akPendidikanInput));
 
     const hasOverride = overrideGolongan || overrideUnitKerja || overrideNomorKonversi || overrideNomorAkumulasi || overrideNomorPenetapan || overrideTempatDitetapkan || overrideTanggalPenetapan || overridePejabatTitle || overridePejabatInstansi || overridePejabatNama || overridePejabatNip || overridePejabatGolongan;
 
@@ -477,7 +478,7 @@ export default function ActivityLogTab({
           <div className="bg-teal-50 border border-teal-100 rounded-lg p-3.5 space-y-1">
             <span className="text-[10px] font-bold text-teal-850 uppercase tracking-widest block">Estimasi Hasil Akrual Angka Kredit</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-extrabold text-teal-700 font-mono">+{calculatedCredit.toFixed(4)}</span>
+              <span className="text-3xl font-extrabold text-teal-700 font-mono">+{calculatedCredit.toFixed(3)}</span>
               <span className="text-sm font-semibold text-teal-650">AK</span>
             </div>
             <p className="text-[10px] text-teal-800 leading-normal">
@@ -767,7 +768,7 @@ export default function ActivityLogTab({
             <div className="bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs">
               <span className="text-slate-500">Jumlah SKP AK:</span>
               <span className="font-extrabold font-mono text-emerald-800 bg-emerald-100/50 px-2.5 py-0.5 rounded border border-emerald-200">
-                +{evaluations.reduce((sum, item) => sum + (item.creditEarned || 0), 0).toFixed(3)} AK
+                +{sumAK(...evaluations.map(item => item.creditEarned)).toFixed(3)} AK
               </span>
             </div>
           </div>
@@ -873,10 +874,10 @@ export default function ActivityLogTab({
                           )}
                         </td>
                         <td className="py-3 px-3 text-right font-bold text-slate-950">
-                          +{item.creditEarned.toFixed(3)}
+                          +{roundAK(item.creditEarned).toFixed(3)}
                           {item.akPendidikan && item.akPendidikan > 0 ? (
                             <span className="block text-[9px] font-bold text-teal-600 font-sans">
-                              (Pendidikan: +{item.akPendidikan.toFixed(3)})
+                              (Pendidikan: +{roundAK(item.akPendidikan).toFixed(3)})
                             </span>
                           ) : null}
                         </td>

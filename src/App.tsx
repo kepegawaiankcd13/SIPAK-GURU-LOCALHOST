@@ -66,14 +66,11 @@ import {
   fetchSchoolsFromMysql,
   loginWithMysql
 } from "./lib/mysqlSync";
+import { parseAKNumber, roundAK, sumAK, subtractAK, isAKGreaterOrEqual } from "./lib/akUtils";
 
-// Helper to safely parse decimal values in Indonesian format (supporting commas)
+// Helper to safely parse decimal values in Indonesian/International format (comma, dot, thousands)
 export const parseFloatValue = (val: any): number => {
-  if (val === undefined || val === null) return 0;
-  if (typeof val === 'number') return val;
-  const str = String(val).trim().replace(',', '.');
-  const parsed = parseFloat(str);
-  return isNaN(parsed) ? 0 : parsed;
+  return parseAKNumber(val);
 };
 
 
@@ -625,9 +622,9 @@ export default function App() {
           school: data.school || "",
           currentGolongan: data.currentGolongan || "III/c",
           targetGolongan: data.targetGolongan || "III/d",
-          baseAK: parseFloatValue(data.baseAK) || 0,
-          akIntegrasi2022: parseFloatValue(data.akIntegrasi2022) || 0,
-          akPendidikan: parseFloatValue(data.akPendidikan) || 0,
+          baseAK: roundAK(parseFloatValue(data.baseAK)),
+          akIntegrasi2022: roundAK(parseFloatValue(data.akIntegrasi2022)),
+          akPendidikan: roundAK(parseFloatValue(data.akPendidikan)),
           ratingSKP: data.ratingSKP || "Baik",
           workDurationYears: parseFloatValue(data.workDurationYears) || 1,
           karpegNumber: data.karpegNumber || "",
@@ -677,10 +674,10 @@ export default function App() {
           period: evalData.period || "Tahunan",
           rating: evalData.rating || "Baik",
           level: evalData.level || "Ahli Muda",
-          coefficient: Number(evalData.coefficient) || 0,
-          multiplier: Number(evalData.multiplier) || 0,
-          creditEarned: Number(evalData.creditEarned) || 0,
-          akPendidikan: Number(evalData.akPendidikan) || 0,
+          coefficient: roundAK(parseFloatValue(evalData.coefficient)),
+          multiplier: Number(parseFloatValue(evalData.multiplier).toFixed(2)),
+          creditEarned: roundAK(parseFloatValue(evalData.creditEarned)),
+          akPendidikan: roundAK(parseFloatValue(evalData.akPendidikan)),
           notes: evalData.notes || "",
           startDate: evalData.startDate || "",
           endDate: evalData.endDate || "",
@@ -693,10 +690,10 @@ export default function App() {
         evalsList.sort((a, b) => (b.year - a.year) || b.period.localeCompare(a.period));
         setEvaluations(evalsList);
 
-        const sumAK = evalsList.reduce((sum, item) => sum + (item.creditEarned || 0), 0);
-        const sumPend = evalsList.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
-        setTeacherEvalsCache(prev => ({ ...prev, [teacherId]: sumAK }));
-        setTeacherPendCache(prev => ({ ...prev, [teacherId]: sumPend }));
+        const totalAK = sumAK(...evalsList.map(item => item.creditEarned || 0));
+        const totalPend = sumAK(...evalsList.map(item => item.akPendidikan || 0));
+        setTeacherEvalsCache(prev => ({ ...prev, [teacherId]: totalAK }));
+        setTeacherPendCache(prev => ({ ...prev, [teacherId]: totalPend }));
       }
     } catch (err) {
       console.warn("Gagal memuat evaluasi dari MySQL:", err);
@@ -720,14 +717,10 @@ export default function App() {
       if (!t.id) return;
       fetchEvaluationsFromMysql(t.id).then(rows => {
         if (rows && Array.isArray(rows)) {
-          let sumAK = 0;
-          let sumPend = 0;
-          rows.forEach((val: any) => {
-            sumAK += Number(val.creditEarned) || 0;
-            sumPend += Number(val.akPendidikan) || 0;
-          });
-          setTeacherEvalsCache(prev => ({ ...prev, [t.id]: sumAK }));
-          setTeacherPendCache(prev => ({ ...prev, [t.id]: sumPend }));
+          const totalAK = sumAK(...rows.map((val: any) => parseFloatValue(val.creditEarned)));
+          const totalPend = sumAK(...rows.map((val: any) => parseFloatValue(val.akPendidikan)));
+          setTeacherEvalsCache(prev => ({ ...prev, [t.id]: totalAK }));
+          setTeacherPendCache(prev => ({ ...prev, [t.id]: totalPend }));
         }
       }).catch(() => {});
     });
@@ -911,8 +904,8 @@ export default function App() {
         school: assignedSchoolUpper,
         currentGolongan: newTeacherForm.currentGolongan,
         targetGolongan: newTeacherForm.targetGolongan,
-        baseAK: parseFloatValue(newTeacherForm.baseAK),
-        akIntegrasi2022: parseFloatValue(newTeacherForm.akIntegrasi2022),
+        baseAK: roundAK(parseFloatValue(newTeacherForm.baseAK)),
+        akIntegrasi2022: roundAK(parseFloatValue(newTeacherForm.akIntegrasi2022)),
         akPendidikan: 0,
         ratingSKP: "Baik" as const,
         workDurationYears: 3,
@@ -1258,8 +1251,8 @@ export default function App() {
 
           const currentGolongan = normalizeGolongan(row[3] || "", "III/c");
           const targetGolongan = normalizeGolongan(row[4] || "", "III/d");
-          const akIntegrasi2022 = parseFloatValue(row[5]);
-          const parsedBaseAK = parseFloatValue(row[6]);
+          const akIntegrasi2022 = roundAK(parseFloatValue(row[5]));
+          const parsedBaseAK = roundAK(parseFloatValue(row[6]));
           const baseAK = parsedBaseAK > 0 ? parsedBaseAK : (GOLONGAN_BASE_VALS[currentGolongan] || 200);
           const karpegNumber = (row[7] || "").trim().replace(/^'+/, "");
           const rawJabatan = (row[9] || "").trim().toLowerCase();
@@ -1476,12 +1469,12 @@ export default function App() {
   const handleProfileChange = async (updated: TeacherProfile) => {
     if (!selectedTeacherId) return;
     
-    // Ensure all numeric values are cleanly parsed floats/numbers
+    // Ensure all numeric values are cleanly parsed and rounded to 3 decimals
     const parsedUpdated: TeacherProfile = {
       ...updated,
-      baseAK: parseFloatValue(updated.baseAK),
-      akIntegrasi2022: parseFloatValue(updated.akIntegrasi2022),
-      akPendidikan: parseFloatValue(updated.akPendidikan),
+      baseAK: roundAK(parseFloatValue(updated.baseAK)),
+      akIntegrasi2022: roundAK(parseFloatValue(updated.akIntegrasi2022)),
+      akPendidikan: roundAK(parseFloatValue(updated.akPendidikan)),
       workDurationYears: parseFloatValue(updated.workDurationYears) || 1
     };
 
@@ -1516,10 +1509,10 @@ export default function App() {
         period: newEval.period,
         rating: newEval.rating,
         level: newEval.level,
-        coefficient: Number(newEval.coefficient),
-        multiplier: Number(newEval.multiplier),
-        creditEarned: Number(newEval.creditEarned),
-        akPendidikan: Number(newEval.akPendidikan) || 0,
+        coefficient: roundAK(parseFloatValue(newEval.coefficient)),
+        multiplier: Number(parseFloatValue(newEval.multiplier).toFixed(2)),
+        creditEarned: roundAK(parseFloatValue(newEval.creditEarned)),
+        akPendidikan: roundAK(parseFloatValue(newEval.akPendidikan)),
         notes: newEval.notes || "",
         startDate: newEval.startDate || "",
         endDate: newEval.endDate || "",
@@ -1535,14 +1528,12 @@ export default function App() {
       setEvaluations(prev => {
         const next = [evalDoc, ...prev.filter(e => e.id !== evalId)];
         next.sort((a, b) => (b.year - a.year) || b.period.localeCompare(a.period));
+        const totalAK = sumAK(...next.map(item => item.creditEarned || 0));
+        const totalPend = sumAK(...next.map(item => item.akPendidikan || 0));
+        setTeacherEvalsCache(c => ({ ...c, [selectedTeacherId]: totalAK }));
+        setTeacherPendCache(c => ({ ...c, [selectedTeacherId]: totalPend }));
         return next;
       });
-
-      // Update caches
-      const curCredit = Number(evalDoc.creditEarned) || 0;
-      const curPend = Number(evalDoc.akPendidikan) || 0;
-      setTeacherEvalsCache(prev => ({ ...prev, [selectedTeacherId]: (prev[selectedTeacherId] || 0) + curCredit }));
-      setTeacherPendCache(prev => ({ ...prev, [selectedTeacherId]: (prev[selectedTeacherId] || 0) + curPend }));
 
       toast.success("Penilaian SKP berhasil disimpan ke database MySQL XAMPP.");
     } catch (err: any) {
@@ -1573,10 +1564,10 @@ export default function App() {
         period: updatedEval.period,
         rating: updatedEval.rating,
         level: updatedEval.level,
-        coefficient: Number(updatedEval.coefficient),
-        multiplier: Number(updatedEval.multiplier),
-        creditEarned: Number(updatedEval.creditEarned),
-        akPendidikan: Number(updatedEval.akPendidikan) || 0,
+        coefficient: roundAK(parseFloatValue(updatedEval.coefficient)),
+        multiplier: Number(parseFloatValue(updatedEval.multiplier).toFixed(2)),
+        creditEarned: roundAK(parseFloatValue(updatedEval.creditEarned)),
+        akPendidikan: roundAK(parseFloatValue(updatedEval.akPendidikan)),
         notes: updatedEval.notes || "",
         startDate: updatedEval.startDate || "",
         endDate: updatedEval.endDate || "",
@@ -1649,18 +1640,18 @@ export default function App() {
 
       // 4. Eligibility Filter
       if (filterEligibility) {
-        const sumAK = teacherEvalsCache[t.id] || 0;
-        const sumPend = teacherPendCache[t.id] || 0;
-        const totalPendidikanAK = (t.akPendidikan || 0) + sumPend;
-        const currentTotalAK = (t.akIntegrasi2022 || 0) + sumAK + totalPendidikanAK;
+        const totalSKP = teacherEvalsCache[t.id] || 0;
+        const totalPend = teacherPendCache[t.id] || 0;
+        const totalPendidikanAK = sumAK(t.akPendidikan || 0, totalPend);
+        const currentTotalAK = sumAK(t.akIntegrasi2022 || 0, totalSKP, totalPendidikanAK);
 
         const minimalPangkat = getMinimalPangkat(t.currentGolongan);
         const minimalJenjang = getMinimalJenjang(t.currentGolongan);
 
         const isCrossingJenjang = getTeacherLevel(t.currentGolongan) !== getTeacherLevel(t.targetGolongan);
         const isEligible = isCrossingJenjang 
-          ? (currentTotalAK >= minimalPangkat && currentTotalAK >= minimalJenjang)
-          : (currentTotalAK >= minimalPangkat);
+          ? (isAKGreaterOrEqual(currentTotalAK, minimalPangkat) && isAKGreaterOrEqual(currentTotalAK, minimalJenjang))
+          : isAKGreaterOrEqual(currentTotalAK, minimalPangkat);
 
         if (filterEligibility === "eligible" && !isEligible) return false;
         if (filterEligibility === "not_eligible" && isEligible) return false;
@@ -1681,13 +1672,8 @@ export default function App() {
         return a.nip.localeCompare(b.nip);
       }
       if (sortBy === "ak_desc" || sortBy === "ak_asc") {
-        const sumAK_A = teacherEvalsCache[a.id] || 0;
-        const sumPend_A = teacherPendCache[a.id] || 0;
-        const totalAK_A = (a.akIntegrasi2022 || 0) + sumAK_A + (a.akPendidikan || 0) + sumPend_A;
-
-        const sumAK_B = teacherEvalsCache[b.id] || 0;
-        const sumPend_B = teacherPendCache[b.id] || 0;
-        const totalAK_B = (b.akIntegrasi2022 || 0) + sumAK_B + (b.akPendidikan || 0) + sumPend_B;
+        const totalAK_A = sumAK(a.akIntegrasi2022 || 0, teacherEvalsCache[a.id] || 0, a.akPendidikan || 0, teacherPendCache[a.id] || 0);
+        const totalAK_B = sumAK(b.akIntegrasi2022 || 0, teacherEvalsCache[b.id] || 0, b.akPendidikan || 0, teacherPendCache[b.id] || 0);
 
         return sortBy === "ak_desc" ? totalAK_B - totalAK_A : totalAK_A - totalAK_B;
       }
@@ -1698,35 +1684,35 @@ export default function App() {
   }, [teachers, searchQuery, filterSchool, filterJabatan, filterGolongan, filterEligibility, sortBy, teacherEvalsCache, teacherPendCache]);
 
   const stats = useMemo(() => {
-    let total = teachers.length;
+    const total = teachers.length;
     let eligible = 0;
-    let totalAK = 0;
+    const totalAKList: number[] = [];
 
     teachers.forEach(t => {
-      const sumAK = teacherEvalsCache[t.id] || 0;
-      const sumPend = teacherPendCache[t.id] || 0;
-      const totalPendidikanAK = (t.akPendidikan || 0) + sumPend;
-      const currentTotalAK = (t.akIntegrasi2022 || 0) + sumAK + totalPendidikanAK;
-      totalAK += currentTotalAK;
+      const totalPendidikanAK = sumAK(t.akPendidikan || 0, teacherPendCache[t.id] || 0);
+      const currentTotalAK = sumAK(t.akIntegrasi2022 || 0, teacherEvalsCache[t.id] || 0, totalPendidikanAK);
+      totalAKList.push(currentTotalAK);
 
       const minimalPangkat = getMinimalPangkat(t.currentGolongan);
       const minimalJenjang = getMinimalJenjang(t.currentGolongan);
 
       const isCrossingJenjang = getTeacherLevel(t.currentGolongan) !== getTeacherLevel(t.targetGolongan);
       const isEligible = isCrossingJenjang 
-        ? (currentTotalAK >= minimalPangkat && currentTotalAK >= minimalJenjang)
-        : (currentTotalAK >= minimalPangkat);
+        ? (isAKGreaterOrEqual(currentTotalAK, minimalPangkat) && isAKGreaterOrEqual(currentTotalAK, minimalJenjang))
+        : isAKGreaterOrEqual(currentTotalAK, minimalPangkat);
 
       if (isEligible) {
         eligible++;
       }
     });
 
+    const grandTotalAK = sumAK(...totalAKList);
+
     return {
       total,
       eligible,
       notEligible: total - eligible,
-      avgAK: total > 0 ? (totalAK / total) : 0
+      avgAK: total > 0 ? roundAK(grandTotalAK / total) : 0
     };
   }, [teachers, teacherEvalsCache, teacherPendCache]);
 
@@ -3389,21 +3375,22 @@ export default function App() {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {currentTeachers.map((teacher) => {
-                              const sumAK = teacherEvalsCache[teacher.id] || 0;
-                              const sumPend = teacherPendCache[teacher.id] || 0;
-                              const totalPendidikanAK = (teacher.akPendidikan || 0) + sumPend;
-                              const currentTotalAK = (teacher.akIntegrasi2022 || 0) + sumAK + totalPendidikanAK;
+                              const totalSKP = teacherEvalsCache[teacher.id] || 0;
+                              const totalPend = teacherPendCache[teacher.id] || 0;
+                              const totalPendidikanAK = sumAK(teacher.akPendidikan || 0, totalPend);
+                              const currentTotalAK = sumAK(teacher.akIntegrasi2022 || 0, totalSKP, totalPendidikanAK);
 
                               const minimalPangkat = getMinimalPangkat(teacher.currentGolongan);
                               const minimalJenjang = getMinimalJenjang(teacher.currentGolongan);
 
                               const isCrossingJenjang = getTeacherLevel(teacher.currentGolongan) !== getTeacherLevel(teacher.targetGolongan);
-                              const targetAK = isCrossingJenjang ? minimalJenjang : minimalPangkat;
+                              const targetAK = isCrossingJenjang ? Math.max(minimalPangkat, minimalJenjang) : minimalPangkat;
                               
-                              const shortfall = targetAK - currentTotalAK;
+                              const rawShortfall = subtractAK(targetAK, currentTotalAK);
+                              const shortfall = rawShortfall > 0 ? rawShortfall : 0;
                               const isEligible = isCrossingJenjang 
-                                ? (currentTotalAK >= minimalPangkat && currentTotalAK >= minimalJenjang)
-                                : (currentTotalAK >= minimalPangkat);
+                                ? (isAKGreaterOrEqual(currentTotalAK, minimalPangkat) && isAKGreaterOrEqual(currentTotalAK, minimalJenjang))
+                                : isAKGreaterOrEqual(currentTotalAK, minimalPangkat);
 
                               return (
                                 <tr key={teacher.id} className="hover:bg-slate-50/70 transition-colors text-xs">
@@ -3440,7 +3427,7 @@ export default function App() {
                                     ) : (
                                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 text-[10px] font-extrabold px-2 py-1 rounded-md border border-amber-200 uppercase tracking-tight" title={`Kurang ${shortfall.toFixed(3)} AK`}>
                                         <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                        <span>Kurang {shortfall.toFixed(1)} AK</span>
+                                        <span>Kurang {shortfall.toFixed(3)} AK</span>
                                       </span>
                                     )}
                                   </td>
@@ -3518,21 +3505,22 @@ export default function App() {
 
                             {/* Monitoring Kelayakan Naik Pangkat / Naik Jenjang */}
                             {(() => {
-                              const sumAK = teacherEvalsCache[teacher.id] || 0;
-                              const sumPend = teacherPendCache[teacher.id] || 0;
-                              const totalPendidikanAK = (teacher.akPendidikan || 0) + sumPend;
-                              const currentTotalAK = (teacher.akIntegrasi2022 || 0) + sumAK + totalPendidikanAK;
+                              const totalSKP = teacherEvalsCache[teacher.id] || 0;
+                              const totalPend = teacherPendCache[teacher.id] || 0;
+                              const totalPendidikanAK = sumAK(teacher.akPendidikan || 0, totalPend);
+                              const currentTotalAK = sumAK(teacher.akIntegrasi2022 || 0, totalSKP, totalPendidikanAK);
 
                               const minimalPangkat = getMinimalPangkat(teacher.currentGolongan);
                               const minimalJenjang = getMinimalJenjang(teacher.currentGolongan);
 
                               const isCrossingJenjang = getTeacherLevel(teacher.currentGolongan) !== getTeacherLevel(teacher.targetGolongan);
-                              const targetAK = isCrossingJenjang ? minimalJenjang : minimalPangkat;
+                              const targetAK = isCrossingJenjang ? Math.max(minimalPangkat, minimalJenjang) : minimalPangkat;
                               
-                              const shortfall = targetAK - currentTotalAK;
+                              const rawShortfall = subtractAK(targetAK, currentTotalAK);
+                              const shortfall = rawShortfall > 0 ? rawShortfall : 0;
                               const isEligible = isCrossingJenjang 
-                                ? (currentTotalAK >= minimalPangkat && currentTotalAK >= minimalJenjang)
-                                : (currentTotalAK >= minimalPangkat);
+                                ? (isAKGreaterOrEqual(currentTotalAK, minimalPangkat) && isAKGreaterOrEqual(currentTotalAK, minimalJenjang))
+                                : isAKGreaterOrEqual(currentTotalAK, minimalPangkat);
 
                               return (
                                 <div className="pt-2.5 border-t border-slate-100 space-y-2">
@@ -3699,18 +3687,18 @@ export default function App() {
   const golonganDetail = GOLONGAN_LIST.find(g => g.id === profile.currentGolongan) || GOLONGAN_LIST[0];
   const targetGolonganDetail = GOLONGAN_LIST.find(g => g.id === profile.targetGolongan) || GOLONGAN_LIST[1];
 
-  // Core calculations linked to Firestore sub-collection array
-  const totalSKPAC = evaluations.reduce((sum, item) => sum + (item.creditEarned || 0), 0);
-  const totalPendidikanAK = (profile.akPendidikan || 0) + evaluations.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
-  const currentTotalAK = (profile.akIntegrasi2022 || 0) + totalSKPAC + totalPendidikanAK;
+  // Core calculations linked to MySQL evaluation rows using integer milli-AK
+  const totalSKPAC = sumAK(...evaluations.map(item => item.creditEarned || 0));
+  const totalPendidikanAK = sumAK(profile.akPendidikan || 0, ...evaluations.map(item => item.akPendidikan || 0));
+  const currentTotalAK = sumAK(profile.akIntegrasi2022 || 0, totalSKPAC, totalPendidikanAK);
   
-  // Clean, modern alignment with BKN incremental standards (replaces flawed absolute targets)
+  // Clean, modern alignment with BKN incremental standards
   const targetAK = getMinimalPangkat(profile.currentGolongan);
   
-  const rawNeededAK = targetAK - currentTotalAK;
+  const rawNeededAK = subtractAK(targetAK, currentTotalAK);
   const neededAK = rawNeededAK > 0 ? rawNeededAK : 0;
-  const progressPercent = Math.min(Math.round((currentTotalAK / targetAK) * 100), 100);
-  const isEligible = currentTotalAK >= targetAK;
+  const progressPercent = targetAK > 0 ? Math.min(Math.round((currentTotalAK / targetAK) * 100), 100) : 100;
+  const isEligible = isAKGreaterOrEqual(currentTotalAK, targetAK);
 
   return (
     <div className="min-h-screen bg-slate-50/60 font-sans text-slate-800 flex flex-col justify-between">

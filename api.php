@@ -290,6 +290,43 @@ $body = json_decode(file_get_contents('php://input'), true) ?? [];
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Helper aman untuk mengurai desimal format Indonesia (1.050,500 / 25,5) maupun Internasional (1,050.500 / 8.333)
+$toFloat = function($v, $default = 0.0, $decimals = 3) {
+    if ($v === null || $v === '') return round((float)$default, $decimals);
+    if (is_int($v) || is_float($v)) return round((float)$v, $decimals);
+    $raw = preg_replace('/\s+/', '', trim((string)$v));
+    if ($raw === '') return round((float)$default, $decimals);
+    $isNeg = substr($raw, 0, 1) === '-';
+    $str = preg_replace('/[^0-9.,]/', '', $raw);
+    if ($str === '') return round((float)$default, $decimals);
+
+    $hasDot = strpos($str, '.') !== false;
+    $hasComma = strpos($str, ',') !== false;
+    if ($hasDot && $hasComma) {
+        $lastDot = strrpos($str, '.');
+        $lastComma = strrpos($str, ',');
+        if ($lastComma > $lastDot) {
+            $str = str_replace('.', '', $str);
+            $str = str_replace(',', '.', $str);
+        } else {
+            $str = str_replace(',', '', $str);
+        }
+    } elseif ($hasComma) {
+        if (substr_count($str, ',') === 1) {
+            $str = str_replace(',', '.', $str);
+        } else {
+            $str = str_replace(',', '', $str);
+        }
+    } elseif ($hasDot) {
+        if (substr_count($str, '.') > 1) {
+            $str = str_replace('.', '', $str);
+        }
+    }
+    if (!is_numeric($str)) return round((float)$default, $decimals);
+    $val = (float)(($isNeg ? '-' : '') . $str);
+    return round($val, $decimals);
+};
+
 // ============================================================================
 // ROUTING
 // ============================================================================
@@ -423,12 +460,6 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
 
         $rawStatus = strtolower(trim((string)($t['pejabatPenilaiStatus'] ?? 'definitif')));
         $pejabatStatus = in_array($rawStatus, ['definitif', 'plt', 'plh'], true) ? $rawStatus : 'definitif';
-
-        $toFloat = function($v, $default = 0.0) {
-            if ($v === null || $v === '') return (float)$default;
-            $num = str_replace(',', '.', trim((string)$v));
-            return is_numeric($num) ? (float)$num : (float)$default;
-        };
 
         $rawJabatan = strtolower(trim((string)($t['jabatanFungsional'] ?? 'guru')));
         $jabatanFungsional = strpos($rawJabatan, 'pengawas') !== false ? 'Pengawas Sekolah' : 'Guru';
@@ -576,9 +607,14 @@ if (preg_match('#^(teachers|mysql/teachers)/([^/]+)/evaluations$#', $route, $mat
             overrideData = VALUES(overrideData)";
 
         $stmt = $pdo->prepare($sql);
+        $coeffVal = (isset($ev['coefficient']) && $ev['coefficient'] !== '') ? $toFloat($ev['coefficient'], 25, 3) : 25.0;
+        $multVal = (isset($ev['multiplier']) && $ev['multiplier'] !== '') ? $toFloat($ev['multiplier'], 1, 2) : 1.0;
+        $creditVal = (isset($ev['creditEarned']) && $ev['creditEarned'] !== '') ? $toFloat($ev['creditEarned'], 25, 3) : 25.0;
+        $pendVal = $toFloat($ev['akPendidikan'] ?? 0, 0, 3);
+
         $stmt->execute([
             $ev['id'], $tId, $ev['year'] ?? 2024, $ev['period'] ?? 'Tahunan', $ev['rating'] ?? 'Baik', $ev['level'] ?? 'Ahli Muda',
-            $ev['coefficient'] ?? 25, $ev['multiplier'] ?? 1, $ev['creditEarned'] ?? 25, $ev['akPendidikan'] ?? 0,
+            $coeffVal, $multVal, $creditVal, $pendVal,
             $ev['notes'] ?? null, $ev['startDate'] ?? null, $ev['endDate'] ?? null, !empty($ev['isCustomRange']) ? 1 : 0,
             $ev['customMonths'] ?? 12, $ev['skpFileLink'] ?? null, $ev['evidenceFileLink'] ?? null,
             $overrideStr, $ev['createdBy'] ?? 'admin'

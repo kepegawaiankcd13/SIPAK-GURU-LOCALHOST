@@ -13,6 +13,13 @@ import {
   getMinimalPangkat,
   getMinimalJenjang
 } from '../data/golonganData';
+import {
+  parseAKNumber,
+  roundAK,
+  sumAK,
+  subtractAK,
+  isAKGreaterOrEqual
+} from '../lib/akUtils';
 import { 
   Award, 
   BookOpen, 
@@ -52,9 +59,9 @@ export default function DashboardTab({
   const [editForm, setEditForm] = useState<TeacherProfile>({ ...profile });
 
   // Current cumulative AK = PAK Integrasi 2022 (input manual) + Hasil Konversi E-SKP + Pendidikan (jika ada)
-  const totalSKPAC = evaluations.reduce((sum, item) => sum + (item.creditEarned || 0), 0);
-  const totalPendidikanAK = (profile.akPendidikan || 0) + evaluations.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
-  const currentTotalAK = (profile.akIntegrasi2022 || 0) + totalSKPAC + totalPendidikanAK;
+  const totalSKPAC = sumAK(...evaluations.map(item => roundAK(item.creditEarned)));
+  const totalPendidikanAK = sumAK(profile.akPendidikan, ...evaluations.map(item => roundAK(item.akPendidikan)));
+  const currentTotalAK = sumAK(profile.akIntegrasi2022, totalSKPAC, totalPendidikanAK);
   
   // Clean, modern alignment with BKN incremental standards (replaces flawed absolute targets)
   const minimalPangkat = getMinimalPangkat(profile.currentGolongan);
@@ -63,26 +70,31 @@ export default function DashboardTab({
   const isNaikJenjang = getTeacherLevel(profile.currentGolongan) !== getTeacherLevel(profile.targetGolongan);
   const targetAK = isNaikJenjang ? minimalJenjang : minimalPangkat;
   
-  // Perhitungan Kelebihan/Kekurangan AK
-  const rawNeededAK = targetAK - currentTotalAK;
+  // Perhitungan Kelebihan/Kekurangan AK presisi milli-AK
+  const rawNeededAK = subtractAK(targetAK, currentTotalAK);
   const neededAK = rawNeededAK > 0 ? rawNeededAK : 0;
-  const progressPercent = Math.min(Math.round((currentTotalAK / targetAK) * 100), 100);
+  const progressPercent = targetAK > 0 ? Math.min(Math.round((currentTotalAK / targetAK) * 100), 100) : 100;
 
   // Alignment with newest calculations on the blangko page
   const teacherLevel = getTeacherLevel(profile.currentGolongan);
 
   const isLolosPangkat = isNaikJenjang 
-    ? (currentTotalAK >= minimalPangkat && currentTotalAK >= minimalJenjang) 
-    : (currentTotalAK >= minimalPangkat);
-  const isLolosJenjang = currentTotalAK >= minimalJenjang;
+    ? (isAKGreaterOrEqual(currentTotalAK, minimalPangkat) && isAKGreaterOrEqual(currentTotalAK, minimalJenjang)) 
+    : isAKGreaterOrEqual(currentTotalAK, minimalPangkat);
+  const isLolosJenjang = isAKGreaterOrEqual(currentTotalAK, minimalJenjang);
 
-  const kekuranganPangkat = minimalPangkat > currentTotalAK ? (minimalPangkat - currentTotalAK) : 0;
-  const kekuranganJenjang = minimalJenjang > currentTotalAK ? (minimalJenjang - currentTotalAK) : 0;
+  const kekuranganPangkat = isAKGreaterOrEqual(currentTotalAK, minimalPangkat) ? 0 : subtractAK(minimalPangkat, currentTotalAK);
+  const kekuranganJenjang = isAKGreaterOrEqual(currentTotalAK, minimalJenjang) ? 0 : subtractAK(minimalJenjang, currentTotalAK);
 
   // Save profile changes
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    setProfile(editForm);
+    setProfile({
+      ...editForm,
+      baseAK: roundAK(parseAKNumber(editForm.baseAK)),
+      akIntegrasi2022: roundAK(parseAKNumber(editForm.akIntegrasi2022)),
+      akPendidikan: roundAK(parseAKNumber(editForm.akPendidikan))
+    });
     setIsEditing(false);
   };
 
@@ -90,7 +102,7 @@ export default function DashboardTab({
     const level = getTeacherLevel(profile.currentGolongan);
     const standardCoeff = SKP_STANDARD_COEFFICIENT[level] || 12.5;
     const multiplier = SKP_RATING_MULTIPLIERS[profile.ratingSKP] || 1.0;
-    return standardCoeff * multiplier;
+    return roundAK(standardCoeff * multiplier);
   };
 
   // Estimasi tahun kenaikan pangkat berdasarkan target AK dan kualifikasi SKP tahunan saat ini
@@ -358,7 +370,7 @@ export default function DashboardTab({
               <div>
                 <span className="block text-xs text-slate-400 font-bold uppercase">Predikat SKP Estimasi</span>
                 <span className={`font-semibold px-2 py-0.5 rounded text-xs inline-block border ${formatRatingBadge(profile.ratingSKP)}`}>
-                  {profile.ratingSKP} ({profile.ratingSKP === 'Sangat Baik' ? '150%' : profile.ratingSKP === 'Baik' ? '100%' : '75%'})
+                  {profile.ratingSKP} ({Math.round((SKP_RATING_MULTIPLIERS[profile.ratingSKP] || 1.0) * 100)}%)
                 </span>
               </div>
             </div>
@@ -601,7 +613,7 @@ export default function DashboardTab({
             <TrendingUp className="w-4.5 h-4.5 text-teal-600 shrink-0 mt-0.5" />
             <div className="text-xs text-slate-600 leading-relaxed">
               <strong className="text-slate-800">Simulasi Proyeksi SKP:</strong> Dengan predikat 
-              <strong className="text-slate-800"> "{profile.ratingSKP}"</strong> (Mendapat <strong className="text-emerald-700">{profile.ratingSKP === 'Sangat Baik' ? '150%' : '100%'} bimbingan koefisien</strong>) sebagai 
+              <strong className="text-slate-800"> "{profile.ratingSKP}"</strong> (Mendapat <strong className="text-emerald-700">{Math.round((SKP_RATING_MULTIPLIERS[profile.ratingSKP] || 1.0) * 100)}% bimbingan koefisien</strong>) sebagai 
               <strong className="text-slate-800"> {getTeacherLevel(profile.currentGolongan)}</strong>, Anda memperoleh 
               <strong className="text-emerald-700 font-mono"> {annualCreditEarnedEst.toFixed(3)} AK</strong> per tahun. 
               {neededAK > 0 ? (
@@ -664,7 +676,7 @@ export default function DashboardTab({
                 <div className="flex justify-between font-medium">
                   <span>Status Kelayakan AK:</span>
                   {isLolosPangkat ? (
-                    <span className="text-emerald-700">Surplus +{(currentTotalAK - minimalPangkat).toFixed(3)} AK</span>
+                    <span className="text-emerald-700">Surplus +{subtractAK(currentTotalAK, minimalPangkat).toFixed(3)} AK</span>
                   ) : (
                     <span className="text-amber-600 font-bold">Kurang {kekuranganPangkat.toFixed(3)} AK</span>
                   )}
@@ -716,7 +728,7 @@ export default function DashboardTab({
                 <div className="flex justify-between font-medium">
                   <span>Status Kelayakan AK:</span>
                   {isLolosJenjang ? (
-                    <span className="text-emerald-700">Surplus +{(currentTotalAK - minimalJenjang).toFixed(3)} AK</span>
+                    <span className="text-emerald-700">Surplus +{subtractAK(currentTotalAK, minimalJenjang).toFixed(3)} AK</span>
                   ) : (
                     <span className="text-amber-600 font-bold">Kurang {kekuranganJenjang.toFixed(3)} AK</span>
                   )}

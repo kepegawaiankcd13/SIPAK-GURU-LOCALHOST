@@ -6,6 +6,14 @@ import { SpecimenSVG } from './SpecimenSVG';
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from '../data/golonganData';
 import { Printer, Edit3, Check, Calendar, AlertCircle, FileText, Landmark, User, Mail, Globe, Settings, GraduationCap, Download, Loader2 } from 'lucide-react';
 import { toast, swal } from '../lib/toast';
+import {
+  roundAK,
+  sumAK,
+  subtractAK,
+  isAKGreaterOrEqual,
+  formatAK,
+  formatCoefficient
+} from '../lib/akUtils';
 
 // Helper canvas context for resolving modern CSS color spaces (OKLCH, OKLAB, color-mix, CSS variables) to standard RGB/HEX
 const colorResolverCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
@@ -482,9 +490,9 @@ export default function OfficialPAKReport({
     return sortedEvaluationsChrono.filter(item => item.id !== latestEval.id);
   }, [latestEval, sortedEvaluationsChrono]);
 
-  // Calculations
+  // Calculations (menggunakan aritmetika milli-AK agar baris & jumlah selalu persis 3 desimal)
   const totalKonversi = useMemo(() => {
-    return sortedEvaluationsChrono.reduce((sum, item) => sum + (item.creditEarned || 0), 0) + (profile.akIntegrasi2022 || 0);
+    return sumAK(profile.akIntegrasi2022, ...sortedEvaluationsChrono.map(item => roundAK(item.creditEarned)));
   }, [sortedEvaluationsChrono, profile.akIntegrasi2022]);
 
   // Page 3 Konversi Breakdown:
@@ -492,38 +500,39 @@ export default function OfficialPAKReport({
   // "LAMA" is everything else including PAK Integrasi 2022
   const { konversiLama, konversiBaru, konversiJumlah } = useMemo(() => {
     if (!latestEval) {
-      return { konversiLama: profile.akIntegrasi2022 || 0, konversiBaru: 0, konversiJumlah: profile.akIntegrasi2022 || 0 };
+      const integrasi = roundAK(profile.akIntegrasi2022);
+      return { konversiLama: integrasi, konversiBaru: 0, konversiJumlah: integrasi };
     }
-    const baru = latestEval.creditEarned || 0;
-    const lama = priorEvaluations.reduce((sum, item) => sum + (item.creditEarned || 0), 0) + (profile.akIntegrasi2022 || 0);
+    const baru = roundAK(latestEval.creditEarned);
+    const lama = sumAK(profile.akIntegrasi2022, ...priorEvaluations.map(item => roundAK(item.creditEarned)));
     return {
       konversiLama: lama,
       konversiBaru: baru,
-      konversiJumlah: lama + baru
+      konversiJumlah: sumAK(lama, baru)
     };
   }, [priorEvaluations, latestEval, profile.akIntegrasi2022]);
 
   const { pendidikanLama, pendidikanBaru, pendidikanJumlah } = useMemo(() => {
-    const baru = latestEval ? (latestEval.akPendidikan || 0) : 0;
-    const lama = (profile.akPendidikan || 0) + priorEvaluations.reduce((sum, item) => sum + (item.akPendidikan || 0), 0);
+    const baru = latestEval ? roundAK(latestEval.akPendidikan) : 0;
+    const lama = sumAK(profile.akPendidikan, ...priorEvaluations.map(item => roundAK(item.akPendidikan)));
     return {
       pendidikanLama: lama,
       pendidikanBaru: baru,
-      pendidikanJumlah: lama + baru
+      pendidikanJumlah: sumAK(lama, baru)
     };
   }, [priorEvaluations, latestEval, profile.akPendidikan]);
 
   // Grand Total cumulative (Row 4 + Row 5)
   const accumLama = useMemo(() => {
-    return konversiLama + pendidikanLama;
+    return sumAK(konversiLama, pendidikanLama);
   }, [konversiLama, pendidikanLama]);
 
   const accumBaru = useMemo(() => {
-    return konversiBaru + pendidikanBaru;
+    return sumAK(konversiBaru, pendidikanBaru);
   }, [konversiBaru, pendidikanBaru]);
 
   const accumJumlah = useMemo(() => {
-    return accumLama + accumBaru;
+    return sumAK(accumLama, accumBaru);
   }, [accumLama, accumBaru]);
 
   // Targets and Deficits mapping
@@ -544,34 +553,32 @@ export default function OfficialPAKReport({
     return getMinimalJenjang(profile.currentGolongan);
   }, [profile.currentGolongan]);
 
-  const kekuranganPangkat = useMemo(() => {
-    if (minimalPangkat <= 0) return 0;
-    const gap = minimalPangkat - accumJumlah;
-    return gap > 0 ? gap : 0;
-  }, [minimalPangkat, accumJumlah]);
-
-  const kekuranganJenjang = useMemo(() => {
-    if (minimalJenjang <= 0) return 0;
-    const gap = minimalJenjang - accumJumlah;
-    return gap > 0 ? gap : 0;
-  }, [minimalJenjang, accumJumlah]);
-
   const isPangkatSurplus = useMemo(() => {
-    return accumJumlah >= minimalPangkat;
+    return isAKGreaterOrEqual(accumJumlah, minimalPangkat);
   }, [accumJumlah, minimalPangkat]);
 
   const isJenjangSurplus = useMemo(() => {
-    return accumJumlah >= minimalJenjang;
+    return isAKGreaterOrEqual(accumJumlah, minimalJenjang);
   }, [accumJumlah, minimalJenjang]);
+
+  const kekuranganPangkat = useMemo(() => {
+    if (minimalPangkat <= 0 || isPangkatSurplus) return 0;
+    return subtractAK(minimalPangkat, accumJumlah);
+  }, [minimalPangkat, accumJumlah, isPangkatSurplus]);
+
+  const kekuranganJenjang = useMemo(() => {
+    if (minimalJenjang <= 0 || isJenjangSurplus) return 0;
+    return subtractAK(minimalJenjang, accumJumlah);
+  }, [minimalJenjang, accumJumlah, isJenjangSurplus]);
 
   const pangkatDiffValue = useMemo(() => {
     if (minimalPangkat <= 0) return 0;
-    return Math.abs(accumJumlah - minimalPangkat);
+    return Math.abs(subtractAK(accumJumlah, minimalPangkat));
   }, [accumJumlah, minimalPangkat]);
 
   const jenjangDiffValue = useMemo(() => {
     if (minimalJenjang <= 0) return 0;
-    return Math.abs(accumJumlah - minimalJenjang);
+    return Math.abs(subtractAK(accumJumlah, minimalJenjang));
   }, [accumJumlah, minimalJenjang]);
 
   const isJenjangChange = useMemo(() => {
@@ -1632,10 +1639,10 @@ export default function OfficialPAKReport({
                       {latestEval ? (latestEval.multiplier * 100).toFixed(2).replace('.', ',') : "100,00"}%
                     </td>
                     <td className="py-3 px-3 border-r border-black font-mono font-bold text-slate-800 align-middle">
-                      {latestEval ? latestEval.coefficient : "12.5"}
+                      {latestEval ? formatCoefficient(latestEval.coefficient) : "12,5"}
                     </td>
                     <td className="py-3 px-3 font-mono font-extrabold text-[12px] bg-emerald-50/20 text-emerald-950 align-middle">
-                      {latestEval ? (latestEval.creditEarned).toFixed(3) : "12,500"}
+                      {latestEval ? formatAK(latestEval.creditEarned, 3, true) : "12,500"}
                     </td>
                   </tr>
                 </tbody>
@@ -1704,7 +1711,7 @@ export default function OfficialPAKReport({
                       <td className="py-2 print:py-1 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
                       <td className="py-2 print:py-1 px-2 border-r border-black font-mono text-center text-slate-500 align-middle">-</td>
                       <td className="py-2 print:py-1 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] print:text-[9.5px] align-middle">
-                        {(profile.akIntegrasi2022 || 0).toFixed(3).replace('.', ',')}
+                        {formatAK(profile.akIntegrasi2022 || 0, 3, true)}
                       </td>
                     </tr>
                   )}
@@ -1716,10 +1723,10 @@ export default function OfficialPAKReport({
                         {item.notes || (item.period === 'Tahunan' ? 'Januari s.d Desember' : item.period)}
                       </td>
                       <td className="py-2 print:py-1 px-2 border-r border-black font-bold align-middle">{item.rating}</td>
-                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{(item.multiplier * 100).toFixed(0)}%</td>
-                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{item.coefficient}</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{Math.round(item.multiplier * 100)}%</td>
+                      <td className="py-2 print:py-1 px-2 border-r border-black font-mono align-middle">{formatCoefficient(item.coefficient)}</td>
                       <td className="py-2 print:py-1 px-3 text-right font-mono font-extrabold pr-4 text-[10.5px] print:text-[9.5px] align-middle">
-                        {item.creditEarned.toFixed(3).replace('.', ',')}
+                        {formatAK(item.creditEarned, 3, true)}
                       </td>
                     </tr>
                   ))}
@@ -1738,7 +1745,7 @@ export default function OfficialPAKReport({
                       JUMLAH ANGKA KREDIT YANG DIPEROLEH
                     </td>
                     <td className="py-2.5 print:py-1 px-3 text-right font-mono font-black pr-4 text-[11.5px] print:text-[10px] bg-emerald-50/20 text-emerald-950 align-middle">
-                      {totalKonversi.toFixed(3).replace('.', ',')}
+                      {formatAK(totalKonversi, 3, true)}
                     </td>
                   </tr>
 
@@ -1821,17 +1828,17 @@ export default function OfficialPAKReport({
                   <tr className="border-b border-black font-mono text-[11px] print:text-[9px]">
                     <td className="py-1 print:py-0.5 px-2 border-r border-black text-center text-slate-500 align-middle">4</td>
                     <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] font-bold text-slate-800 align-middle">AK KONVERSI</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{konversiLama.toFixed(3).replace('.', ',')}</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{konversiBaru.toFixed(3).replace('.', ',')}</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-bold text-[11px] print:text-[9px] align-middle">{konversiJumlah.toFixed(3).replace('.', ',')}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{formatAK(konversiLama, 3, true)}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{formatAK(konversiBaru, 3, true)}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-bold text-[11px] print:text-[9px] align-middle">{formatAK(konversiJumlah, 3, true)}</td>
                     <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
                   <tr className="border-b border-black font-mono text-[11px] print:text-[9px]">
                     <td className="py-1 print:py-0.5 px-2 border-r border-black text-center text-slate-500 align-middle">5</td>
                     <td className="py-1 print:py-0.5 px-3 border-r border-black font-serif text-[11px] print:text-[9px] text-slate-800 align-middle">AK YANG DIPEROLEH DARI PENINGKATAN PENDIDIKAN</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{pendidikanLama > 0 ? pendidikanLama.toFixed(3).replace('.', ',') : "-"}</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanBaru > 0 ? pendidikanBaru.toFixed(3).replace('.', ',') : "-"}</td>
-                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanJumlah > 0 ? pendidikanJumlah.toFixed(3).replace('.', ',') : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 text-[11px] print:text-[9px] align-middle">{pendidikanLama > 0 ? formatAK(pendidikanLama, 3, true) : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanBaru > 0 ? formatAK(pendidikanBaru, 3, true) : "-"}</td>
+                    <td className="py-1 print:py-0.5 px-3 border-r border-black text-right pr-3 font-semibold text-[11px] print:text-[9px] align-middle">{pendidikanJumlah > 0 ? formatAK(pendidikanJumlah, 3, true) : "-"}</td>
                     <td className="py-1 print:py-0.5 px-2 align-middle"></td>
                   </tr>
                   <tr className="border-b border-black text-slate-500 font-mono text-[11px] print:text-[9px]">
@@ -1849,13 +1856,13 @@ export default function OfficialPAKReport({
                       JUMLAH ANGKA KREDIT KUMULATIF
                     </td>
                     <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
-                      {accumLama.toFixed(3).replace('.', ',')}
+                      {formatAK(accumLama, 3, true)}
                     </td>
                     <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
-                      {accumBaru.toFixed(3).replace('.', ',')}
+                      {formatAK(accumBaru, 3, true)}
                     </td>
                     <td className="py-2 print:py-1 px-3 border-r border-black text-right pr-3 font-mono font-black text-[12px] print:text-[10.5px] bg-emerald-50/20 text-emerald-950 align-middle">
-                      {accumJumlah.toFixed(3).replace('.', ',')}
+                      {formatAK(accumJumlah, 3, true)}
                     </td>
                     <td className="py-2 print:py-1 px-2 align-middle"></td>
                   </tr>
@@ -1878,10 +1885,10 @@ export default function OfficialPAKReport({
                    <tr className="border-b border-black text-center">
                     <td className="py-1.5 print:py-0.5 px-2.5 text-left font-semibold border-r border-black align-middle">ANGKA KREDIT MINIMAL YANG HARUS DIPENUHI UNTUK KENAIKAN PANGKAT/ JENJANG</td>
                     <td className="py-1.5 print:py-0.5 px-2 border-r border-black font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
-                      {minimalPangkat > 0 ? minimalPangkat.toFixed(3).replace('.', ',') : "-"}
+                      {minimalPangkat > 0 ? formatAK(minimalPangkat, 3, true) : "-"}
                     </td>
                     <td className="py-1.5 print:py-0.5 px-2 font-mono font-bold text-[10.5px] print:text-[9.5px] align-middle">
-                      {minimalJenjang > 0 ? minimalJenjang.toFixed(3).replace('.', ',') : "-"}
+                      {minimalJenjang > 0 ? formatAK(minimalJenjang, 3, true) : "-"}
                     </td>
                   </tr>
                   <tr className="border-b border-black text-center">
@@ -1893,7 +1900,7 @@ export default function OfficialPAKReport({
                     <td className={`py-1.5 print:py-0.5 px-2 border-r border-black font-mono font-extrabold text-[10.5px] print:text-[9.5px] align-middle ${
                       isPangkatSurplus ? "bg-emerald-50/10 text-emerald-900" : "bg-amber-55/10 text-amber-900"
                     }`}>
-                      {minimalPangkat > 0 ? pangkatDiffValue.toFixed(3).replace('.', ',') : "-"}
+                      {minimalPangkat > 0 ? formatAK(pangkatDiffValue, 3, true) : "-"}
                     </td>
                     <td className="py-1.5 print:py-0.5 px-2 font-mono font-semibold text-slate-400 align-middle">-</td>
                   </tr>
@@ -1907,7 +1914,7 @@ export default function OfficialPAKReport({
                     <td className={`py-1.5 print:py-0.5 px-2 font-mono font-extrabold text-[10.5px] print:text-[9.5px] align-middle ${
                       isJenjangSurplus ? "bg-emerald-50/10 text-emerald-900" : "bg-amber-55/10 text-amber-900"
                     }`}>
-                      {minimalJenjang > 0 ? jenjangDiffValue.toFixed(3).replace('.', ',') : "-"}
+                      {minimalJenjang > 0 ? formatAK(jenjangDiffValue, 3, true) : "-"}
                     </td>
                   </tr>
                   {/* Eligibility final visual status line inside Page 3 table */}

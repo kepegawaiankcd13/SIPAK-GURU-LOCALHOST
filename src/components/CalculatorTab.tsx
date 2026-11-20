@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { GolonganID } from '../types';
 import { GOLONGAN_LIST, SKP_STANDARD_COEFFICIENT, SKP_RATING_MULTIPLIERS, getTeacherLevel } from '../data/golonganData';
 import { Calculator, HelpCircle, ArrowRight, Check, AlertCircle, Info, Calendar, PlusCircle } from 'lucide-react';
+import { parseAKNumber, roundAK, sumAK, subtractAK, isAKGreaterOrEqual } from '../lib/akUtils';
 
 export default function CalculatorTab() {
   const [currentGol, setCurrentGol] = useState<GolonganID>('III/a');
@@ -32,15 +33,15 @@ export default function CalculatorTab() {
     const levelStr = getTeacherLevel(currentGol);
     const baseCoeff = SKP_STANDARD_COEFFICIENT[levelStr] || 12.5;
     const ratingMult = SKP_RATING_MULTIPLIERS[predikatSKP] || 1.0;
-    const annualAK = baseCoeff * ratingMult;
-    const totalAKEarned = (annualAK * years);
+    const annualAK = roundAK(baseCoeff * ratingMult);
+    const totalAKEarned = roundAK(annualAK * years);
     
     // Kelebihan / bonus ijazah baru linear dihargai dengan angka kredit tambahan 25% dari AK kenaikan pangkat yang dituju
-    const ijazahBonus = hasLulusS2 ? (0.25 * currentDetail.akNeedsToEarn) : 0;
-    const finalEarned = totalAKEarned + ijazahBonus + akIntegrasi;
+    const ijazahBonus = hasLulusS2 ? roundAK(0.25 * currentDetail.akNeedsToEarn) : 0;
+    const finalEarned = sumAK(totalAKEarned, ijazahBonus, akIntegrasi);
 
-    const remainingToTarget = currentDetail.akNeedsToEarn - finalEarned;
-    const isSuccess = remainingToTarget <= 0;
+    const remainingToTarget = subtractAK(currentDetail.akNeedsToEarn, finalEarned);
+    const isSuccess = isAKGreaterOrEqual(finalEarned, currentDetail.akNeedsToEarn);
 
     return {
       levelStr,
@@ -110,8 +111,7 @@ export default function CalculatorTab() {
               step="any"
               value={akIntegrasi || ''}
               onChange={e => {
-                const val = parseFloat(e.target.value);
-                setAkIntegrasi(isNaN(val) ? 0 : val);
+                setAkIntegrasi(roundAK(parseAKNumber(e.target.value)));
               }}
               placeholder="Contoh: 15.250"
               className="w-full text-sm bg-slate-50 border border-slate-200 hover:border-slate-300 p-2.5 rounded focus:outline-teal-500 font-mono"
@@ -171,7 +171,7 @@ export default function CalculatorTab() {
               {/* AK Per Year */}
               <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-center font-semibold">
                 <span className="text-[10px] tracking-wider text-slate-400 font-bold uppercase block mb-1">Perolehan / Tahun</span>
-                <p className="text-2xl font-black font-mono text-slate-900">+{resultsSKP.annualAK.toFixed(2)}</p>
+                <p className="text-2xl font-black font-mono text-slate-900">+{resultsSKP.annualAK.toFixed(3)}</p>
                 <p className="text-[10px] text-slate-500 mt-1">Jenjang {resultsSKP.levelStr}</p>
               </div>
 
@@ -180,9 +180,9 @@ export default function CalculatorTab() {
                 <span className="text-[10px] tracking-wider text-teal-500 font-bold uppercase block mb-1">Total Proyeksi Akhir</span>
                 <p className="text-2xl font-black font-mono text-teal-700">+{resultsSKP.finalEarned.toFixed(3)}</p>
                 <div className="text-[9.5px] text-teal-600 mt-1 leading-tight">
-                  <span>SKP: {resultsSKP.totalAKEarned.toFixed(2)}</span>
-                  {akIntegrasi > 0 && <span className="block">PAK Integrasi: +{akIntegrasi.toFixed(2)}</span>}
-                  {hasLulusS2 && <span className="block">Ijazah S2: +{resultsSKP.ijazahBonus.toFixed(1)}</span>}
+                  <span>SKP: {resultsSKP.totalAKEarned.toFixed(3)}</span>
+                  {akIntegrasi > 0 && <span className="block">PAK Integrasi: +{roundAK(akIntegrasi).toFixed(3)}</span>}
+                  {hasLulusS2 && <span className="block">Ijazah S2: +{resultsSKP.ijazahBonus.toFixed(3)}</span>}
                 </div>
               </div>
 
@@ -247,14 +247,15 @@ export default function CalculatorTab() {
                   )}
                   {Array.from({ length: years }).map((_, index) => {
                     const yearNum = index + 1;
-                    const carryAK = akIntegrasi + resultsSKP.annualAK * yearNum;
-                    const isYearMet = carryAK >= currentDetail.akNeedsToEarn;
+                    const carryAK = sumAK(akIntegrasi, roundAK(resultsSKP.annualAK * yearNum));
+                    const isYearMet = isAKGreaterOrEqual(carryAK, currentDetail.akNeedsToEarn);
+                    const pct = Math.round((SKP_RATING_MULTIPLIERS[predikatSKP] || 1.0) * 100);
                     
                     return (
                       <tr key={index} className="border-b border-slate-100 hover:bg-slate-50/50">
                         <td className="py-2.5 px-3 font-semibold font-sans text-slate-800">Tahun {yearNum}</td>
-                        <td className="py-2.5 px-3 font-sans text-slate-600">{predikatSKP} ({predikatSKP === 'Sangat Baik' ? '150%' : '100%'})</td>
-                        <td className="py-2.5 px-3 text-right font-medium text-slate-500">+{resultsSKP.annualAK.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 font-sans text-slate-600">{predikatSKP} ({pct}%)</td>
+                        <td className="py-2.5 px-3 text-right font-medium text-slate-500">+{resultsSKP.annualAK.toFixed(3)}</td>
                         <td className="py-2.5 px-3 text-right font-extrabold text-slate-900">{carryAK.toFixed(3)} AK</td>
                         <td className="py-2.5 px-3 text-center">
                           {isYearMet ? (
@@ -270,8 +271,8 @@ export default function CalculatorTab() {
                     <tr className="bg-emerald-50/30 border-b border-emerald-100">
                       <td className="py-2.5 px-3 font-semibold text-emerald-800 font-sans">Pendidikan S2</td>
                       <td className="py-2.5 px-3 italic font-sans text-emerald-700">Ijazah Baru Linier</td>
-                      <td className="py-2.5 px-3 text-right text-emerald-700">+{resultsSKP.ijazahBonus.toFixed(2)}</td>
-                      <td className="py-2.5 px-3 text-right font-extrabold text-slate-900">{(akIntegrasi + resultsSKP.totalAKEarned + resultsSKP.ijazahBonus).toFixed(3)} AK</td>
+                      <td className="py-2.5 px-3 text-right text-emerald-700">+{resultsSKP.ijazahBonus.toFixed(3)}</td>
+                      <td className="py-2.5 px-3 text-right font-extrabold text-slate-900">{sumAK(akIntegrasi, resultsSKP.totalAKEarned, resultsSKP.ijazahBonus).toFixed(3)} AK</td>
                       <td className="py-2.5 px-3 text-center font-sans">
                         <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-black">Bonus 25%</span>
                       </td>
