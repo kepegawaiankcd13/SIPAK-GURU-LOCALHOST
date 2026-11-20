@@ -125,9 +125,18 @@ export default function DashboardTab({
               <User className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">{profile.name || "Nama Guru belum diatur"}</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold text-slate-900">{profile.name || "Nama Pegawai belum diatur"}</h2>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded border ${
+                  profile.jabatanFungsional === 'Pengawas Sekolah'
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                    : 'bg-teal-50 text-teal-700 border-teal-200'
+                }`}>
+                  {profile.jabatanFungsional || 'Guru'}
+                </span>
+              </div>
               <p className="text-sm text-slate-500 font-mono">
-                {profile.nip ? `NIP. ${profile.nip}` : "NIP belum diisi"} • {profile.school || "Instansi Sekolah belum diisi"}
+                {profile.nip ? `NIP. ${profile.nip}` : "NIP belum diisi"} • {profile.school || "Unit Kerja / Sekolah belum diisi"}
               </p>
             </div>
           </div>
@@ -167,13 +176,24 @@ export default function DashboardTab({
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">INSTANSI SEKOLAH</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">UNIT KERJA / SEKOLAH</label>
               <input
                 type="text"
                 value={editForm.school}
                 onChange={e => setEditForm({ ...editForm, school: e.target.value })}
                 className="w-full text-sm bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-teal-500"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">JABATAN FUNGSIONAL</label>
+              <select
+                value={editForm.jabatanFungsional || 'Guru'}
+                onChange={e => setEditForm({ ...editForm, jabatanFungsional: e.target.value as 'Guru' | 'Pengawas Sekolah' })}
+                className="w-full text-sm bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-teal-500 font-semibold"
+              >
+                <option value="Guru">Guru</option>
+                <option value="Pengawas Sekolah">Pengawas Sekolah</option>
+              </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">GOLONGAN SAAT INI</label>
@@ -671,7 +691,7 @@ export default function DashboardTab({
                   <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded block w-max mb-1">
                     Track Kenaikan Jenjang Jabatan
                   </span>
-                  <h4 className="text-sm font-bold text-slate-800">Menuju Guru {teacherLevel === 'Ahli Pertama' ? 'Ahli Muda (III/c)' : teacherLevel === 'Ahli Muda' ? 'Ahli Madya (IV/a)' : teacherLevel === 'Ahli Madya' ? 'Ahli Utama (IV/d)' : 'Karir Maksimal'}</h4>
+                  <h4 className="text-sm font-bold text-slate-800">Menuju {profile.jabatanFungsional || 'Guru'} {teacherLevel === 'Ahli Pertama' ? 'Ahli Muda (III/c)' : teacherLevel === 'Ahli Muda' ? 'Ahli Madya (IV/a)' : teacherLevel === 'Ahli Madya' ? 'Ahli Utama (IV/d)' : 'Karir Maksimal'}</h4>
                 </div>
                 {isLolosJenjang ? (
                   <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 self-center">

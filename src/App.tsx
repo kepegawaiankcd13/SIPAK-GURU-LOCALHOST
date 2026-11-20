@@ -38,7 +38,7 @@ import {
   Maximize,
   Minimize
 } from "lucide-react";
-import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings } from "./types";
+import { TeacherProfile, SKPEvaluation, GolonganID, KopSettings, JabatanFungsionalType } from "./types";
 import { GOLONGAN_LIST, getTeacherLevel, GOLONGAN_BASE_VALS, getMinimalPangkat, getMinimalJenjang } from "./data/golonganData";
 import DashboardTab from "./components/DashboardTab";
 import ActivityLogTab from "./components/ActivityLogTab";
@@ -160,6 +160,7 @@ export default function App() {
   const [newTeacherForm, setNewTeacherForm] = useState({
     name: "",
     nip: "",
+    jabatanFungsional: "Guru" as JabatanFungsionalType,
     school: "",
     currentGolongan: "III/c" as GolonganID,
     targetGolongan: "III/d" as GolonganID,
@@ -183,6 +184,7 @@ export default function App() {
 
   // Filters and Sorting states for teacher database
   const [filterSchool, setFilterSchool] = useState<string>("");
+  const [filterJabatan, setFilterJabatan] = useState<string>("");
   const [filterGolongan, setFilterGolongan] = useState<string>("");
   const [filterEligibility, setFilterEligibility] = useState<string>("");
   const [sortBy, setSortBy] = useState<string>("name_asc");
@@ -619,6 +621,7 @@ export default function App() {
           id: data.id,
           name: data.name || "",
           nip: data.nip || "",
+          jabatanFungsional: (data.jabatanFungsional === 'Pengawas Sekolah' ? 'Pengawas Sekolah' : 'Guru') as JabatanFungsionalType,
           school: data.school || "",
           currentGolongan: data.currentGolongan || "III/c",
           targetGolongan: data.targetGolongan || "III/d",
@@ -733,7 +736,7 @@ export default function App() {
   // Reset pagination page when search or itemsPerPage or filters are modified
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, itemsPerPage, filterSchool, filterGolongan, filterEligibility, sortBy]);
+  }, [searchQuery, itemsPerPage, filterSchool, filterJabatan, filterGolongan, filterEligibility, sortBy]);
 
   // Handle User login (Username / Password Verification with local fallback)
   const handleLogin = async (e: React.FormEvent) => {
@@ -883,14 +886,18 @@ export default function App() {
     if (!user) return;
 
     if (!newTeacherForm.name || !newTeacherForm.nip) {
-      toast.warning("Harap lengkapi Nama Lengkap dan NIP Guru PNS!");
+      toast.warning("Harap lengkapi Nama Lengkap dan NIP Pegawai PNS!");
       return;
     }
 
-    const assignedSchool = user.role === 'school_admin' ? user.school : newTeacherForm.school;
+    const isPengawas = newTeacherForm.jabatanFungsional === 'Pengawas Sekolah';
+    const rawAssignedSchool = user.role === 'school_admin'
+      ? user.school
+      : (newTeacherForm.school.trim() || (isPengawas ? "CABANG DINAS PENDIDIKAN WILAYAH XIII" : ""));
+    const assignedSchoolUpper = rawAssignedSchool.toUpperCase().trim();
 
     // Fast-lookup principal details from schoolsList master data
-    const matchedSchool = schoolsList.find(s => s.name.toUpperCase().trim() === assignedSchool.toUpperCase().trim());
+    const matchedSchool = schoolsList.find(s => s.name.toUpperCase().trim() === assignedSchoolUpper);
     const principalName = matchedSchool?.principalName || "";
     const principalNip = matchedSchool?.principalNip || "";
 
@@ -900,7 +907,8 @@ export default function App() {
         id: teacherId,
         name: newTeacherForm.name.toUpperCase().trim(),
         nip: newTeacherForm.nip.replace(/\s+/g, ""),
-        school: assignedSchool.toUpperCase().trim(),
+        jabatanFungsional: newTeacherForm.jabatanFungsional,
+        school: assignedSchoolUpper,
         currentGolongan: newTeacherForm.currentGolongan,
         targetGolongan: newTeacherForm.targetGolongan,
         baseAK: parseFloatValue(newTeacherForm.baseAK),
@@ -913,15 +921,17 @@ export default function App() {
         birthPlaceDate: "",
         tmtCurrentPangkat: "",
         tmtCurrentJabatan: "",
-        unitKerja: `${assignedSchool.toUpperCase().trim()} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`,
+        unitKerja: matchedSchool
+          ? `${assignedSchoolUpper} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`
+          : assignedSchoolUpper || "CABANG DINAS PENDIDIKAN WILAYAH XIII",
         instansiBiro: "PEMERINTAH PROVINSI JAWA BARAT",
         nomorSuratKonversi: "",
         nomorSuratAkumulasi: "",
         nomorSuratPenetapan: "",
         tempatDitetapkan: "Bandung",
         tanggalPenetapan: "",
-        pejabatPenilaiTitle: matchedSchool ? "KEPALA SEKOLAH" : "KEPALA CABANG PENDIDIKAN",
-        pejabatPenilaiInstansi: matchedSchool ? assignedSchool.toUpperCase().trim() : "PROVINSI JAWA BARAT",
+        pejabatPenilaiTitle: matchedSchool ? "KEPALA SEKOLAH" : "KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII",
+        pejabatPenilaiInstansi: matchedSchool ? assignedSchoolUpper : "PROVINSI JAWA BARAT",
         pejabatPenilaiNama: principalName,
         pejabatPenilaiNip: principalNip,
         pejabatPenilaiGolongan: "",
@@ -931,14 +941,14 @@ export default function App() {
 
       const saveRes = await saveTeacherToMysqlDetailed(data);
       if (!saveRes.ok) {
-        throw new Error(saveRes.error || "Gagal menyimpan data guru ke server database.");
+        throw new Error(saveRes.error || "Gagal menyimpan data pegawai ke server database.");
       }
 
       setTeachers(prev => [data, ...prev.filter(t => t.id !== teacherId)]);
 
       swal.fire({
         title: "Pendaftaran Sukses!",
-        text: `Guru PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
+        text: `${newTeacherForm.jabatanFungsional} PNS "${newTeacherForm.name.toUpperCase().trim()}" berhasil disimpan ke database. Silakan lengkapi angka kredit atau berkas penilaian SKP sekarang!`,
         icon: "success",
         confirmButtonText: "Mulai Lengkapi Data"
       });
@@ -947,6 +957,7 @@ export default function App() {
       setNewTeacherForm({
         name: "",
         nip: "",
+        jabatanFungsional: "Guru",
         school: "",
         currentGolongan: "III/c",
         targetGolongan: "III/d",
@@ -960,11 +971,11 @@ export default function App() {
       // Instantly open the teacher
       handleSelectTeacher(data);
     } catch (err: any) {
-      toast.error("Gagal menambahkan guru: " + (err.message || String(err)));
+      toast.error("Gagal menambahkan data pegawai: " + (err.message || String(err)));
     }
   };
 
-  // Export Teachers to CSV (using Blob to safely handle #, &, %, and UTF-8 BOM)
+  // Export Teachers & Supervisors to CSV (using Blob to safely handle #, &, %, and UTF-8 BOM)
   const handleExportTeachersToCSV = () => {
     const headers = [
       "Nama Lengkap",
@@ -975,7 +986,8 @@ export default function App() {
       "AK PAK Integrasi 2022",
       "AK Pondasi Transisi",
       "Nomor Kartu Pegawai (Karpeg)",
-      "Sekolah Unit Kerja"
+      "Unit Kerja / Sekolah",
+      "Jabatan Fungsional"
     ];
 
     const rows = filteredTeachers.map(t => [
@@ -987,7 +999,8 @@ export default function App() {
       t.akIntegrasi2022 || 0,
       t.baseAK || 0,
       t.karpegNumber || "",
-      t.school || ""
+      t.school || "",
+      t.jabatanFungsional || "Guru"
     ]);
 
     const csvBody = [
@@ -999,7 +1012,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `sikapita_guru_pns_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `sikapita_guru_pengawas_pns_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1017,31 +1030,47 @@ export default function App() {
       "AK PAK Integrasi 2022",
       "AK Pondasi Transisi",
       "Nomor Kartu Pegawai (Karpeg)",
-      "Sekolah Unit Kerja"
+      "Unit Kerja / Sekolah",
+      "Jabatan Fungsional"
     ];
 
-    const sampleRow = [
-      "Drs. GURU CONTOH, M.Pd.",
-      "198505242010111002",
-      "Laki-Laki",
-      "III/c",
-      "III/d",
-      "25.5",
-      "200",
-      "C45678912",
-      user?.school && user.school !== "ALL" ? user.school : "SMAN 1 KAWALI"
+    const sampleRows = [
+      [
+        "Drs. GURU CONTOH, M.Pd.",
+        "198505242010111002",
+        "Laki-Laki",
+        "III/c",
+        "III/d",
+        "25.5",
+        "200",
+        "C45678912",
+        user?.school && user.school !== "ALL" ? user.school : "SMAN 1 KAWALI",
+        "Guru"
+      ],
+      [
+        "Dr. H. PENGAWAS CONTOH, M.Pd.",
+        "197203151997021001",
+        "Laki-Laki",
+        "IV/b",
+        "IV/c",
+        "112.5",
+        "550",
+        "B12345678",
+        "CABANG DINAS PENDIDIKAN WILAYAH XIII",
+        "Pengawas Sekolah"
+      ]
     ];
 
     const csvBody = [
       headers.map(h => `"${h}"`).join(","),
-      sampleRow.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
+      ...sampleRows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
     ].join("\r\n");
 
     const blob = new Blob(["\uFEFF" + csvBody], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "template_import_guru_sikapita.csv";
+    link.download = "template_import_guru_pengawas_sikapita.csv";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1233,12 +1262,19 @@ export default function App() {
           const parsedBaseAK = parseFloatValue(row[6]);
           const baseAK = parsedBaseAK > 0 ? parsedBaseAK : (GOLONGAN_BASE_VALS[currentGolongan] || 200);
           const karpegNumber = (row[7] || "").trim().replace(/^'+/, "");
+          const rawJabatan = (row[9] || "").trim().toLowerCase();
+          const jabatanFungsional: JabatanFungsionalType = rawJabatan.includes("pengawas")
+            ? "Pengawas Sekolah"
+            : "Guru";
 
           // Tenant protection boundaries
+          const defaultUnitKerja = jabatanFungsional === "Pengawas Sekolah"
+            ? "CABANG DINAS PENDIDIKAN WILAYAH XIII"
+            : "SMAN 1 KAWALI";
           const assignedSchool =
             user?.role === 'school_admin' && user.school && user.school !== 'ALL'
               ? user.school
-              : ((row[8] || "").trim() || (user?.school && user.school !== 'ALL' ? user.school : "SMAN 1 KAWALI"));
+              : ((row[8] || "").trim() || (user?.school && user.school !== 'ALL' ? user.school : defaultUnitKerja));
 
           const normalizedSchool = assignedSchool.toUpperCase().trim();
           const matchedSchool = schoolsList.find(s => s.name.toUpperCase().trim() === normalizedSchool);
@@ -1254,6 +1290,7 @@ export default function App() {
             id: teacherId,
             name: name.toUpperCase(),
             nip,
+            jabatanFungsional,
             school: normalizedSchool,
             currentGolongan,
             targetGolongan,
@@ -1267,14 +1304,16 @@ export default function App() {
             gender,
             tmtCurrentPangkat: "",
             tmtCurrentJabatan: "",
-            unitKerja: `${normalizedSchool} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`,
+            unitKerja: matchedSchool
+              ? `${normalizedSchool} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`
+              : normalizedSchool,
             instansiBiro: "PEMERINTAH PROVINSI JAWA BARAT",
             nomorSuratKonversi: "",
             nomorSuratAkumulasi: "",
             nomorSuratPenetapan: "",
             tempatDitetapkan: "Bandung",
             tanggalPenetapan: "",
-            pejabatPenilaiTitle: matchedSchool ? "KEPALA SEKOLAH" : "KEPALA CABANG PENDIDIKAN",
+            pejabatPenilaiTitle: matchedSchool ? "KEPALA SEKOLAH" : "KEPALA CABANG DINAS PENDIDIKAN WILAYAH XIII",
             pejabatPenilaiInstansi: matchedSchool ? normalizedSchool : "PROVINSI JAWA BARAT",
             pejabatPenilaiNama: principalName,
             pejabatPenilaiNip: principalNip,
@@ -1349,6 +1388,7 @@ export default function App() {
         id: teacherId,
         name: "ANTAN KUSTIAWAN, S.Pd, M.Pd.",
         nip: "198606192011011001",
+        jabatanFungsional: "Guru" as JabatanFungsionalType,
         school: activeSchool,
         currentGolongan: "III/c" as const,
         targetGolongan: "III/d" as const,
@@ -1568,17 +1608,41 @@ export default function App() {
     }, 200);
   };
 
-  // Filter & sort teachers based on search query, school filter, golongan filter, eligibility filter, and sorting choice
+  // Combined options for unit kerja filter dropdown (master schools + unit kerja on teachers/supervisors)
+  const schoolFilterOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; npsn: string }>();
+    schoolsList.forEach(s => {
+      const upper = (s.name || "").toUpperCase().trim();
+      if (upper) map.set(upper, { id: s.id, name: s.name, npsn: s.npsn || s.id });
+    });
+    teachers.forEach(t => {
+      const upper = (t.school || "").toUpperCase().trim();
+      if (upper && !map.has(upper)) {
+        map.set(upper, { id: upper, name: upper, npsn: "UNIT" });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [schoolsList, teachers]);
+
+  // Filter & sort teachers based on search query, school filter, jabatan filter, golongan filter, eligibility filter, and sorting choice
   const filteredTeachers = useMemo(() => {
     let list = teachers.filter(t => {
       // 1. Text Search query
+      const jfText = (t.jabatanFungsional || "Guru").toLowerCase();
       const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
         t.nip.includes(searchQuery) ||
-        t.school.toLowerCase().includes(searchQuery.toLowerCase());
+        t.school.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        jfText.includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
-      // 2. School Filter
+      // 2. School / Unit Kerja Filter
       if (filterSchool && t.school !== filterSchool) return false;
+
+      // 2b. Jabatan Fungsional Filter
+      if (filterJabatan) {
+        const currentJF = t.jabatanFungsional || "Guru";
+        if (currentJF !== filterJabatan) return false;
+      }
 
       // 3. Golongan Filter
       if (filterGolongan && t.currentGolongan !== filterGolongan) return false;
@@ -1631,7 +1695,7 @@ export default function App() {
     });
 
     return list;
-  }, [teachers, searchQuery, filterSchool, filterGolongan, filterEligibility, sortBy, teacherEvalsCache, teacherPendCache]);
+  }, [teachers, searchQuery, filterSchool, filterJabatan, filterGolongan, filterEligibility, sortBy, teacherEvalsCache, teacherPendCache]);
 
   const stats = useMemo(() => {
     let total = teachers.length;
@@ -2473,7 +2537,7 @@ export default function App() {
             >
               <div className="flex items-center gap-3">
                 <LayoutDashboard className={`w-4 h-4 ${adminView === "teachers" ? "text-white" : "text-emerald-500"}`} />
-                <span>PANGKALAN GURU PNS</span>
+                <span>PANGKALAN GURU & PENGAWAS</span>
               </div>
             </button>
 
@@ -2687,11 +2751,11 @@ export default function App() {
                       </span>
                     )}
                   </div>
-                  <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Pangkalan Data PAK Guru PNS</h1>
+                  <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Pangkalan Data PAK Guru & Pengawas</h1>
                   <p className="text-xs text-slate-500">
                     {user.role === 'school_admin' && user.school
                       ? `Menampilkan pangkalan data dan penetapan angka kredit Guru ASN pada ${user.school}.`
-                      : "Kelola perhitungan angka kredit mutasi promosi pangkat ratusan guru ASN dengan instan dan aman."}
+                      : "Kelola perhitungan angka kredit dan cetak PAK Jabatan Fungsional Guru & Pengawas Sekolah secara instan."}
                   </p>
                 </div>
                 
@@ -2703,7 +2767,7 @@ export default function App() {
                     }}
                     className="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" /> DAFTARKAN GURU BARU
+                    <Plus className="w-4 h-4" /> DAFTARKAN PEGAWAI BARU
                   </button>
 
                   <button
@@ -2713,7 +2777,7 @@ export default function App() {
                     }}
                     className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                   >
-                    <Upload className="w-4 h-4" /> IMPORT GURU (CSV)
+                    <Upload className="w-4 h-4" /> IMPORT DATA (CSV)
                   </button>
 
                   <button
@@ -2842,13 +2906,43 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-1">UNIT KERJA SEKOLAH</label>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">JENIS JABATAN FUNGSIONAL</label>
+                      <select
+                        value={newTeacherForm.jabatanFungsional}
+                        onChange={e => {
+                          const jf = e.target.value as JabatanFungsionalType;
+                          setNewTeacherForm({
+                            ...newTeacherForm,
+                            jabatanFungsional: jf,
+                            school: jf === 'Pengawas Sekolah' && !newTeacherForm.school
+                              ? 'CABANG DINAS PENDIDIKAN WILAYAH XIII'
+                              : (jf === 'Guru' && newTeacherForm.school === 'CABANG DINAS PENDIDIKAN WILAYAH XIII' ? '' : newTeacherForm.school)
+                          });
+                        }}
+                        className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-teal-500 font-bold text-slate-800 bg-white"
+                      >
+                        <option value="Guru">Guru</option>
+                        <option value="Pengawas Sekolah">Pengawas Sekolah</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                        {newTeacherForm.jabatanFungsional === 'Pengawas Sekolah' ? 'UNIT KERJA / KCD / DINAS' : 'UNIT KERJA SEKOLAH'}
+                      </label>
                       {user.role === 'school_admin' ? (
                         <input
                           type="text"
                           value={user.school}
                           disabled
                           className="w-full text-xs border border-slate-300 bg-slate-100 rounded-lg p-2.5 text-slate-500 font-bold uppercase"
+                        />
+                      ) : newTeacherForm.jabatanFungsional === 'Pengawas Sekolah' ? (
+                        <input
+                          type="text"
+                          placeholder="Contoh: CABANG DINAS PENDIDIKAN WILAYAH XIII"
+                          value={newTeacherForm.school}
+                          onChange={e => setNewTeacherForm({ ...newTeacherForm, school: e.target.value })}
+                          className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-teal-500 uppercase font-bold"
                         />
                       ) : (
                         <SearchableSchoolSelect
@@ -2860,7 +2954,7 @@ export default function App() {
                           placeholder="Cari & pilih unit kerja..."
                         />
                       )}
-                      {user.role === 'super_admin' && schoolsList.length === 0 && (
+                      {user.role === 'super_admin' && newTeacherForm.jabatanFungsional === 'Guru' && schoolsList.length === 0 && (
                         <p className="text-[10px] text-rose-600 mt-1">
                           ⚠️ Belum ada sekolah terdaftar di database. Silakan daftarkan di menu Master Data Sekolah terlebih dahulu.
                         </p>
@@ -2976,7 +3070,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-[10px] font-black text-teal-700 uppercase tracking-wider font-mono">Total PNS</span>
-                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.total} <span className="text-[11px] text-teal-600 font-bold">Guru</span></h3>
+                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.total} <span className="text-[11px] text-teal-600 font-bold">Pegawai</span></h3>
                   </div>
                 </div>
 
@@ -2987,7 +3081,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider font-mono">Layak Naik Pangkat</span>
-                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.eligible} <span className="text-[11px] text-emerald-600 font-bold">Guru</span></h3>
+                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.eligible} <span className="text-[11px] text-emerald-600 font-bold">Pegawai</span></h3>
                   </div>
                 </div>
 
@@ -2998,7 +3092,7 @@ export default function App() {
                   </div>
                   <div>
                     <span className="text-[10px] font-black text-amber-700 uppercase tracking-wider font-mono">Belum Layak</span>
-                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.notEligible} <span className="text-[11px] text-amber-600 font-bold">Guru</span></h3>
+                    <h3 className="text-xl font-black text-slate-950 mt-0.5">{stats.notEligible} <span className="text-[11px] text-amber-600 font-bold">Pegawai</span></h3>
                   </div>
                 </div>
 
@@ -3021,11 +3115,12 @@ export default function App() {
                     <Settings className="w-4 h-4 text-teal-600" />
                     <span className="text-xs font-black text-slate-800 uppercase tracking-tight">Penyaringan & Sortir Pangkalan Data</span>
                   </div>
-                  {(searchQuery || filterSchool || filterGolongan || filterEligibility || sortBy !== "name_asc") && (
+                  {(searchQuery || filterSchool || filterJabatan || filterGolongan || filterEligibility || sortBy !== "name_asc") && (
                     <button
                       onClick={() => {
                         setSearchQuery("");
                         setFilterSchool("");
+                        setFilterJabatan("");
                         setFilterGolongan("");
                         setFilterEligibility("");
                         setSortBy("name_asc");
@@ -3045,7 +3140,7 @@ export default function App() {
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                       <input
                         type="text"
-                        placeholder="Cari guru berdasarkan Nama, NIP, atau Sekolah..."
+                        placeholder="Cari Guru atau Pengawas berdasarkan Nama, NIP, atau Unit Kerja..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs focus:outline-teal-500 focus:bg-white text-slate-800 font-bold"
@@ -3053,9 +3148,23 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Filter Jabatan Fungsional */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider font-mono">Jabatan Fungsional</label>
+                    <select
+                      value={filterJabatan}
+                      onChange={e => setFilterJabatan(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:outline-teal-500 focus:bg-white text-slate-700 font-bold"
+                    >
+                      <option value="">Semua Jabatan (Guru & Pengawas)</option>
+                      <option value="Guru">Guru</option>
+                      <option value="Pengawas Sekolah">Pengawas Sekolah</option>
+                    </select>
+                  </div>
+
                   {/* Filter Sekolah / Unit Kerja */}
                   <div className="space-y-1.5">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider font-mono">Unit Kerja Sekolah</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider font-mono">Unit Kerja / Sekolah</label>
                     {user?.role === 'school_admin' ? (
                       <input
                         type="text"
@@ -3067,10 +3176,10 @@ export default function App() {
                       <SearchableSchoolSelect
                         value={filterSchool}
                         onChange={val => setFilterSchool(val)}
-                        options={schoolsList.map(s => ({ id: s.id, name: s.name, npsn: s.npsn || s.id }))}
+                        options={schoolFilterOptions}
                         allowAll={true}
-                        allLabel="Semua Sekolah"
-                        placeholder="Cari & filter sekolah..."
+                        allLabel="Semua Unit Kerja"
+                        placeholder="Cari & filter unit kerja..."
                       />
                     )}
                   </div>
@@ -3121,18 +3230,18 @@ export default function App() {
                   </div>
 
                   {/* Export Filtered Buttons */}
-                  <div className="md:col-span-2 flex items-end">
-                    {(filterSchool || filterGolongan || filterEligibility || searchQuery) ? (
+                  <div className="flex items-end">
+                    {(filterSchool || filterJabatan || filterGolongan || filterEligibility || searchQuery) ? (
                       <button
                         onClick={handleExportTeachersToCSV}
                         className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-teal-50 hover:bg-teal-100 text-teal-700 hover:text-teal-800 font-bold text-xs rounded-xl transition-all cursor-pointer border border-teal-150 border-teal-200 shadow-xs"
                       >
                         <Download className="w-4 h-4 text-teal-600" />
-                        <span>EKSPORT HASIL FILTER ({filteredTeachers.length} GURU)</span>
+                        <span>EKSPORT ({filteredTeachers.length} DATA)</span>
                       </button>
                     ) : (
                       <div className="text-[11px] text-slate-400 font-medium pb-2">
-                        💡 Gunakan penyaringan di atas untuk mengisolasi data guru tertentu.
+                        💡 Gunakan penyaringan untuk memisahkan Guru & Pengawas.
                       </div>
                     )}
                   </div>
@@ -3174,7 +3283,7 @@ export default function App() {
                   {/* Items per Page Selector & Stats */}
                   <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
                     <div className="text-[11px] text-slate-500 font-medium">
-                      Total: <span className="font-bold text-slate-800">{filteredTeachers.length}</span> Guru
+                      Total: <span className="font-bold text-slate-800">{filteredTeachers.length}</span> Pegawai
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">BARIS PER HALAMAN:</span>
@@ -3299,7 +3408,16 @@ export default function App() {
                               return (
                                 <tr key={teacher.id} className="hover:bg-slate-50/70 transition-colors text-xs">
                                   <td className="py-3 px-4">
-                                    <div className="font-bold text-slate-900 leading-tight">{teacher.name}</div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="font-bold text-slate-900 leading-tight">{teacher.name}</span>
+                                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                                        teacher.jabatanFungsional === 'Pengawas Sekolah'
+                                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                          : 'bg-teal-50 text-teal-700 border-teal-200'
+                                      }`}>
+                                        {teacher.jabatanFungsional || 'Guru'}
+                                      </span>
+                                    </div>
                                     <div className="text-[10px] text-slate-400 font-mono mt-0.5">NIP: {teacher.nip}</div>
                                   </td>
                                   <td className="py-3 px-4 text-slate-600 font-medium max-w-xs truncate">
@@ -3360,14 +3478,23 @@ export default function App() {
                         >
                           <div className="space-y-2.5">
                             <div className="flex justify-between items-start gap-2">
-                              <span className="inline-block bg-teal-50 text-teal-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-teal-100 font-mono">
-                                Golongan: {teacher.currentGolongan} ➔ {teacher.targetGolongan}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-block text-[9px] uppercase font-black px-2 py-0.5 rounded border ${
+                                  teacher.jabatanFungsional === 'Pengawas Sekolah'
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                }`}>
+                                  {teacher.jabatanFungsional === 'Pengawas Sekolah' ? 'PENGAWAS SEKOLAH' : 'GURU'}
+                                </span>
+                                <span className="inline-block bg-teal-50 text-teal-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-teal-100 font-mono">
+                                  {teacher.currentGolongan} ➔ {teacher.targetGolongan}
+                                </span>
+                              </div>
                               
                               <button
                                 onClick={() => handleDeleteTeacher(teacher.id, teacher.name)}
                                 className="text-slate-300 hover:text-rose-600 transition-colors cursor-pointer"
-                                title="Hapus Guru"
+                                title="Hapus Data"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -3379,7 +3506,7 @@ export default function App() {
                             </div>
 
                             <div className="bg-slate-50 p-3 rounded-lg text-[11px] space-y-1 text-slate-600 font-sans border border-slate-100">
-                              <p><strong>Sekolah:</strong> {teacher.school || "Instansi belum diatur"}</p>
+                              <p><strong>Unit Kerja:</strong> {teacher.school || "Instansi belum diatur"}</p>
                               <p><strong>Karpeg:</strong> {teacher.karpegNumber || "-"}</p>
                               <div className="flex gap-4">
                                 <p><strong>Integrasi 2022:</strong> {(teacher.akIntegrasi2022 || 0).toFixed(3)} AK</p>
@@ -3522,7 +3649,7 @@ export default function App() {
           )}
 
           {adminView === "schools" && (
-            <SchoolManagementTab userRole={user.role} userSchool={user.school} />
+            <SchoolManagementTab userRole={user.role} userSchool={user.school} onSchoolsUpdated={loadSchools} />
           )}
 
           {adminView === "kop" && (
@@ -3635,7 +3762,9 @@ export default function App() {
         {/* Active Teacher Floating Context Banner */}
         <div className="bg-emerald-800 text-white p-4 rounded-xl shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border border-emerald-900 select-none print:hidden">
           <div>
-            <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest">Sedang Mengelola Data Guru PNS:</p>
+            <p className="text-[10px] font-bold text-emerald-300 uppercase tracking-widest">
+              Sedang Mengelola Data {profile.jabatanFungsional || 'Guru'} PNS:
+            </p>
             <h2 className="text-lg font-black tracking-tight">{profile.name}</h2>
             <p className="text-xs font-mono text-emerald-200">
               NIP: {profile.nip} • {profile.school || "Instansi Belum Diatur"} • Tersebar {evaluations.length} E-SKP
@@ -3645,7 +3774,7 @@ export default function App() {
             onClick={() => setSelectedTeacherId(null)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-black bg-emerald-900 hover:bg-emerald-950 border border-emerald-750 text-white rounded-lg transition-all cursor-pointer shadow-sm"
           >
-            ⬅ KEMBALI KE REKAP GURU
+            ⬅ KEMBALI KE REKAP DATA
           </button>
         </div>
 

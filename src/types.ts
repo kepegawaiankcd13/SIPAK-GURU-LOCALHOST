@@ -1,8 +1,10 @@
 export type GolonganID = 'III/a' | 'III/b' | 'III/c' | 'III/d' | 'IV/a' | 'IV/b' | 'IV/c' | 'IV/d' | 'IV/e';
+export type JabatanFungsionalType = 'Guru' | 'Pengawas Sekolah';
 
 export interface TeacherProfile {
   name: string;
   nip: string;
+  jabatanFungsional?: JabatanFungsionalType;
   school: string;
   currentGolongan: GolonganID;
   targetGolongan: GolonganID;
@@ -82,6 +84,7 @@ export interface SKPEvaluation {
   // Snapshot Data Khusus Periode/Tahun ini untuk Cetak PAK (Opsional, jika tidak diset menggunakan data profil utama)
   overrideData?: {
     // Data Personal Pegawai pada periode/tahun tersebut
+    jabatanFungsional?: JabatanFungsionalType;
     currentGolongan?: GolonganID; // Pangkat/Golongan pada tahun tersebut
     tmtCurrentPangkat?: string;
     tmtCurrentJabatan?: string;

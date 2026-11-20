@@ -117,6 +117,7 @@ function autoInitDb($pdo) {
                 `id` VARCHAR(64) PRIMARY KEY,
                 `name` VARCHAR(255) NOT NULL,
                 `nip` VARCHAR(50) NOT NULL,
+                `jabatanFungsional` VARCHAR(100) DEFAULT 'Guru',
                 `school` VARCHAR(255) NOT NULL,
                 `currentGolongan` VARCHAR(20) NOT NULL DEFAULT 'III/c',
                 `targetGolongan` VARCHAR(20) NOT NULL DEFAULT 'III/d',
@@ -238,6 +239,9 @@ function autoInitDb($pdo) {
         } catch (Exception $e) {}
         try {
             $pdo->exec("ALTER TABLE `kop_settings` ADD COLUMN `sidebarLogoHeight` INT DEFAULT 64");
+        } catch (Exception $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `teachers` ADD COLUMN `jabatanFungsional` VARCHAR(100) DEFAULT 'Guru' AFTER `nip`");
         } catch (Exception $e) {}
 
         // Seed users if empty
@@ -426,11 +430,14 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
             return is_numeric($num) ? (float)$num : (float)$default;
         };
 
+        $rawJabatan = strtolower(trim((string)($t['jabatanFungsional'] ?? 'guru')));
+        $jabatanFungsional = strpos($rawJabatan, 'pengawas') !== false ? 'Pengawas Sekolah' : 'Guru';
+
         $createdBy = trim((string)($t['createdBy'] ?? ''));
         if ($createdBy === '') $createdBy = 'admin';
 
         $sql = "INSERT INTO `teachers` (
-            id, name, nip, school, currentGolongan, targetGolongan,
+            id, name, nip, jabatanFungsional, school, currentGolongan, targetGolongan,
             baseAK, akIntegrasi2022, akPendidikan, ratingSKP, workDurationYears,
             karpegNumber, birthPlaceDate, gender, tmtCurrentPangkat, tmtCurrentJabatan,
             unitKerja, instansiBiro, nomorSuratKonversi, nomorSuratAkumulasi, nomorSuratPenetapan,
@@ -440,9 +447,9 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
             tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2,
             skPangkatFileLink, pakIntegrasiFileLink, ijazahFileLink, additionalFileLink, createdBy
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         ) ON DUPLICATE KEY UPDATE
-            name = VALUES(name), nip = VALUES(nip), school = VALUES(school),
+            name = VALUES(name), nip = VALUES(nip), jabatanFungsional = VALUES(jabatanFungsional), school = VALUES(school),
             currentGolongan = VALUES(currentGolongan), targetGolongan = VALUES(targetGolongan),
             baseAK = VALUES(baseAK), akIntegrasi2022 = VALUES(akIntegrasi2022), akPendidikan = VALUES(akPendidikan),
             ratingSKP = VALUES(ratingSKP), workDurationYears = VALUES(workDurationYears),
@@ -468,6 +475,7 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
                 $teacherId,
                 substr($teacherName, 0, 255),
                 substr($teacherNip, 0, 50),
+                $jabatanFungsional,
                 substr(trim((string)($t['school'] ?? '')), 0, 255),
                 substr(trim((string)($t['currentGolongan'] ?? 'III/c')) ?: 'III/c', 0, 20),
                 substr(trim((string)($t['targetGolongan'] ?? 'III/d')) ?: 'III/d', 0, 20),
@@ -514,7 +522,7 @@ if ($route === 'teachers' || $route === 'mysql/teachers') {
             echo json_encode(['success' => true, 'id' => $teacherId]);
         } catch (PDOException $e) {
             http_response_code(500);
-            echo json_encode(['error' => 'Gagal menyimpan data guru ke MySQL: ' . $e->getMessage()]);
+            echo json_encode(['error' => 'Gagal menyimpan data pegawai ke MySQL: ' . $e->getMessage()]);
         }
         exit;
     }
@@ -598,13 +606,18 @@ if ($route === 'schools' || $route === 'mysql/schools') {
         exit;
     }
     if ($method === 'POST') {
-        $s = $body;
-        $schoolId = $s['id'] ?? $s['npsn'] ?? '';
-        if (!$schoolId || empty($s['name']) || empty($s['npsn'])) {
+        $s = is_array($body) ? $body : [];
+        $npsn = preg_replace('/\s+/', '', trim((string)($s['npsn'] ?? '')));
+        $schoolName = trim((string)($s['name'] ?? ''));
+        $schoolId = trim((string)($s['id'] ?? '')) ?: $npsn;
+        if ($schoolId === '' || $schoolName === '' || $npsn === '') {
             http_response_code(400);
             echo json_encode(['error' => 'NPSN dan Nama Sekolah wajib diisi.']);
             exit;
         }
+
+        $rawStatus = strtolower(trim((string)($s['principalStatus'] ?? 'definitif')));
+        $principalStatus = in_array($rawStatus, ['definitif', 'plt', 'plh'], true) ? $rawStatus : 'definitif';
 
         $sql = "INSERT INTO `schools` (id, npsn, name, city, address, principalName, principalNip, principalStatus)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -612,12 +625,23 @@ if ($route === 'schools' || $route === 'mysql/schools') {
                   npsn = VALUES(npsn), name = VALUES(name), city = VALUES(city),
                   address = VALUES(address), principalName = VALUES(principalName),
                   principalNip = VALUES(principalNip), principalStatus = VALUES(principalStatus)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([
-            $schoolId, $s['npsn'], $s['name'], $s['city'] ?? null, $s['address'] ?? null,
-            $s['principalName'] ?? null, $s['principalNip'] ?? null, $s['principalStatus'] ?? 'definitif'
-        ]);
-        echo json_encode(['success' => true, 'id' => $schoolId]);
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                substr($schoolId, 0, 64),
+                substr($npsn, 0, 30),
+                substr($schoolName, 0, 255),
+                !empty($s['city']) ? substr(trim((string)$s['city']), 0, 100) : null,
+                !empty($s['address']) ? trim((string)$s['address']) : null,
+                !empty($s['principalName']) ? substr(trim((string)$s['principalName']), 0, 255) : null,
+                !empty($s['principalNip']) ? substr(preg_replace('/\s+/', '', trim((string)$s['principalNip'])), 0, 50) : null,
+                $principalStatus
+            ]);
+            echo json_encode(['success' => true, 'id' => $schoolId]);
+        } catch (PDOException $e) {
+            http_response_code(500);
+            echo json_encode(['error' => 'Gagal menyimpan data sekolah ke MySQL: ' . $e->getMessage()]);
+        }
         exit;
     }
 }

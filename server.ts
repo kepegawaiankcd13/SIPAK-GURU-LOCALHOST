@@ -146,11 +146,15 @@ async function startServer() {
     const rawStatus = String(raw.pejabatPenilaiStatus || "definitif").trim().toLowerCase();
     const pejabatPenilaiStatus = (["definitif", "plt", "plh"].includes(rawStatus) ? rawStatus : "definitif") as "definitif" | "plt" | "plh";
 
+    const rawJabatan = String(raw.jabatanFungsional || "Guru").trim().toLowerCase();
+    const jabatanFungsional = rawJabatan.includes("pengawas") ? "Pengawas Sekolah" : "Guru";
+
     const t = {
       ...raw,
       id,
       name,
       nip,
+      jabatanFungsional,
       gender,
       pejabatPenilaiStatus,
       baseAK: Number(String(raw.baseAK ?? 0).replace(",", ".")) || 0,
@@ -176,7 +180,7 @@ async function startServer() {
         const pool = getDbPool();
         const sql = `
           INSERT INTO \`teachers\` (
-            id, name, nip, school, currentGolongan, targetGolongan,
+            id, name, nip, jabatanFungsional, school, currentGolongan, targetGolongan,
             baseAK, akIntegrasi2022, akPendidikan, ratingSKP, workDurationYears,
             karpegNumber, birthPlaceDate, gender, tmtCurrentPangkat, tmtCurrentJabatan,
             unitKerja, instansiBiro, nomorSuratKonversi, nomorSuratAkumulasi, nomorSuratPenetapan,
@@ -185,9 +189,9 @@ async function startServer() {
             signatureType, ttdBasahType, ttdBasahImageUrl, ttdBasahImageBase64, ttdBasahHeight,
             tteLogoType, tteLogoUrl, tteLogoBase64, tteTextHeader, tteTextJabatan1, tteTextJabatan2,
             skPangkatFileLink, pakIntegrasiFileLink, ijazahFileLink, additionalFileLink, createdBy
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
-            name = VALUES(name), nip = VALUES(nip), school = VALUES(school),
+            name = VALUES(name), nip = VALUES(nip), jabatanFungsional = VALUES(jabatanFungsional), school = VALUES(school),
             currentGolongan = VALUES(currentGolongan), targetGolongan = VALUES(targetGolongan),
             baseAK = VALUES(baseAK), akIntegrasi2022 = VALUES(akIntegrasi2022), akPendidikan = VALUES(akPendidikan),
             ratingSKP = VALUES(ratingSKP), workDurationYears = VALUES(workDurationYears),
@@ -208,7 +212,7 @@ async function startServer() {
             ijazahFileLink = VALUES(ijazahFileLink), additionalFileLink = VALUES(additionalFileLink)
         `;
         const values = [
-          t.id, t.name, t.nip, t.school || '', t.currentGolongan || 'III/c', t.targetGolongan || 'III/d',
+          t.id, t.name, t.nip, t.jabatanFungsional, t.school || '', t.currentGolongan || 'III/c', t.targetGolongan || 'III/d',
           t.baseAK || 0, t.akIntegrasi2022 || 0, t.akPendidikan || 0, t.ratingSKP || 'Baik', t.workDurationYears || 0,
           t.karpegNumber || null, t.birthPlaceDate || null, t.gender || 'Laki-Laki', t.tmtCurrentPangkat || null, t.tmtCurrentJabatan || null,
           t.unitKerja || null, t.instansiBiro || null, t.nomorSuratKonversi || null, t.nomorSuratAkumulasi || null, t.nomorSuratPenetapan || null,
@@ -349,18 +353,34 @@ async function startServer() {
   });
 
   app.post(["/api/schools", "/api/mysql/schools"], async (req, res) => {
-    const s = req.body;
-    const schoolId = s.id || s.npsn;
-    if (!schoolId || !s.name || !s.npsn) {
+    const raw = req.body || {};
+    const npsn = String(raw.npsn || "").replace(/\s+/g, "").trim();
+    const name = String(raw.name || "").trim();
+    const schoolId = String(raw.id || "").trim() || npsn;
+    if (!schoolId || !name || !npsn) {
       return res.status(400).json({ error: "NPSN dan Nama Sekolah wajib diisi." });
     }
 
+    const rawStatus = String(raw.principalStatus || "definitif").trim().toLowerCase();
+    const principalStatus = (["definitif", "plt", "plh"].includes(rawStatus) ? rawStatus : "definitif") as "definitif" | "plt" | "plh";
+    const s = {
+      ...raw,
+      id: schoolId.slice(0, 64),
+      npsn: npsn.slice(0, 30),
+      name: name.slice(0, 255),
+      city: raw.city ? String(raw.city).trim().slice(0, 100) : "",
+      address: raw.address ? String(raw.address).trim() : "",
+      principalName: raw.principalName ? String(raw.principalName).trim().slice(0, 255) : "",
+      principalNip: raw.principalNip ? String(raw.principalNip).replace(/\s+/g, "").trim().slice(0, 50) : "",
+      principalStatus
+    };
+
     const local = readLocalDb();
-    const idx = local.schools.findIndex((item: any) => item.id === schoolId || item.npsn === s.npsn);
+    const idx = local.schools.findIndex((item: any) => item.id === s.id || item.npsn === s.npsn);
     if (idx >= 0) {
-      local.schools[idx] = { ...local.schools[idx], ...s, id: schoolId };
+      local.schools[idx] = { ...local.schools[idx], ...s, id: local.schools[idx].id || s.id };
     } else {
-      local.schools.push({ ...s, id: schoolId });
+      local.schools.push(s);
     }
     writeLocalDb(local);
 
@@ -376,12 +396,12 @@ async function startServer() {
             principalNip = VALUES(principalNip), principalStatus = VALUES(principalStatus)
         `;
         await pool.query(sql, [
-          schoolId, s.npsn, s.name, s.city || null, s.address || null,
-          s.principalName || null, s.principalNip || null, s.principalStatus || 'definitif'
+          s.id, s.npsn, s.name, s.city || null, s.address || null,
+          s.principalName || null, s.principalNip || null, s.principalStatus
         ]);
       } catch {}
     }
-    res.json({ success: true, id: schoolId });
+    res.json({ success: true, id: s.id });
   });
 
   app.delete(["/api/schools/:id", "/api/mysql/schools/:id"], async (req, res) => {

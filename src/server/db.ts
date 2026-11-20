@@ -157,6 +157,7 @@ export async function autoInitializeMysql(): Promise<boolean> {
         \`id\` VARCHAR(64) PRIMARY KEY,
         \`name\` VARCHAR(255) NOT NULL,
         \`nip\` VARCHAR(50) NOT NULL,
+        \`jabatanFungsional\` VARCHAR(100) DEFAULT 'Guru',
         \`school\` VARCHAR(255) NOT NULL,
         \`currentGolongan\` VARCHAR(20) NOT NULL DEFAULT 'III/c',
         \`targetGolongan\` VARCHAR(20) NOT NULL DEFAULT 'III/d',
@@ -203,6 +204,9 @@ export async function autoInitializeMysql(): Promise<boolean> {
         \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+    try {
+      await p.query("ALTER TABLE `teachers` ADD COLUMN `jabatanFungsional` VARCHAR(100) DEFAULT 'Guru' AFTER `nip`");
+    } catch {}
 
     // Table: evaluations
     await p.query(`

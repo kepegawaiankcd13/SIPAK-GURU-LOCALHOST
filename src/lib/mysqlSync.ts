@@ -59,7 +59,7 @@ export async function fetchSchoolsFromMysql(): Promise<any[]> {
   return [];
 }
 
-export async function saveSchoolToMysql(school: {
+export async function saveSchoolToMysqlDetailed(school: {
   id?: string;
   npsn: string;
   name: string;
@@ -68,7 +68,7 @@ export async function saveSchoolToMysql(school: {
   principalName?: string;
   principalNip?: string;
   principalStatus?: string;
-}): Promise<boolean> {
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
   try {
     const res = await fetch('/api/mysql/schools', {
       method: 'POST',
@@ -84,11 +84,40 @@ export async function saveSchoolToMysql(school: {
         principalStatus: school.principalStatus || 'definitif'
       })
     });
-    return res.ok;
-  } catch (err) {
+    const rawText = await res.text();
+    let parsed: any = null;
+    try {
+      parsed = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      parsed = null;
+    }
+    if (res.ok) {
+      return { ok: true, id: parsed?.id || school.id || school.npsn };
+    }
+    const serverMsg =
+      parsed?.error ||
+      parsed?.message ||
+      (rawText && rawText.length < 220 ? rawText.replace(/<[^>]*>/g, '').trim() : '') ||
+      `HTTP ${res.status} ${res.statusText || 'Error'}`;
+    return { ok: false, error: serverMsg };
+  } catch (err: any) {
     console.warn('Gagal menyimpan sekolah ke MySQL:', err);
-    return false;
+    return { ok: false, error: err?.message || 'Tidak dapat terhubung ke server API.' };
   }
+}
+
+export async function saveSchoolToMysql(school: {
+  id?: string;
+  npsn: string;
+  name: string;
+  address?: string;
+  city?: string;
+  principalName?: string;
+  principalNip?: string;
+  principalStatus?: string;
+}): Promise<boolean> {
+  const result = await saveSchoolToMysqlDetailed(school);
+  return result.ok;
 }
 
 export async function deleteSchoolFromMysql(schoolIdOrNpsn: string): Promise<boolean> {

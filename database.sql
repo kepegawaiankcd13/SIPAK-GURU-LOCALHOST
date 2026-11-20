@@ -51,10 +51,11 @@ CREATE TABLE `schools` (
 -- ==============================================================================
 DROP TABLE IF EXISTS `teachers`;
 CREATE TABLE `teachers` (
-  `id` VARCHAR(64) PRIMARY KEY COMMENT 'ID unik guru (atau string slug)',
-  `name` VARCHAR(255) NOT NULL COMMENT 'Nama lengkap guru beserta gelar akademik',
+  `id` VARCHAR(64) PRIMARY KEY COMMENT 'ID unik guru atau pengawas (atau string slug)',
+  `name` VARCHAR(255) NOT NULL COMMENT 'Nama lengkap pegawai beserta gelar akademik',
   `nip` VARCHAR(50) NOT NULL COMMENT '18 digit Nomor Induk Pegawai',
-  `school` VARCHAR(255) NOT NULL COMMENT 'Nama sekolah unit kerja saat ini',
+  `jabatanFungsional` VARCHAR(100) NOT NULL DEFAULT 'Guru' COMMENT 'Jenis Jabatan Fungsional: Guru atau Pengawas Sekolah',
+  `school` VARCHAR(255) NOT NULL COMMENT 'Nama sekolah atau instansi unit kerja saat ini',
   `currentGolongan` VARCHAR(20) NOT NULL DEFAULT 'III/c' COMMENT 'Pangkat / Golongan ruang saat ini (III/a s.d IV/e)',
   `targetGolongan` VARCHAR(20) NOT NULL DEFAULT 'III/d' COMMENT 'Pangkat / Golongan ruang target kenaikan',
   `baseAK` DECIMAL(10, 3) DEFAULT 0.000 COMMENT 'Angka Kredit Pondasi dasar golongan',

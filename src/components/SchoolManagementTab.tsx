@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Edit, Building, MapPin, Search, LayoutGrid, List, Filter, Database, RefreshCw, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Edit, Building, MapPin, Search, LayoutGrid, List, Filter, Database, RefreshCw, CheckCircle2, Upload, Download } from "lucide-react";
 import { toast, swal } from "../lib/toast";
 import { 
-  saveSchoolToMysql, 
+  saveSchoolToMysql,
+  saveSchoolToMysqlDetailed,
   deleteSchoolFromMysql, 
   fetchSchoolsFromMysql, 
   checkMysqlConnection, 
@@ -23,9 +24,10 @@ export interface School {
 interface SchoolManagementTabProps {
   userRole?: string;
   userSchool?: string;
+  onSchoolsUpdated?: () => void;
 }
 
-export default function SchoolManagementTab({ userRole, userSchool }: SchoolManagementTabProps) {
+export default function SchoolManagementTab({ userRole, userSchool, onSchoolsUpdated }: SchoolManagementTabProps) {
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddingSchool, setIsAddingSchool] = useState(false);
@@ -65,6 +67,9 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
 
   const [isMysqlConnected, setIsMysqlConnected] = useState<boolean>(false);
   const [isSyncingMysql, setIsSyncingMysql] = useState<boolean>(false);
+  const [isImportingSchools, setIsImportingSchools] = useState<boolean>(false);
+  const [isImportingProcessing, setIsImportingProcessing] = useState<boolean>(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
 
   const loadSchoolsFromDb = async () => {
     setLoading(true);
@@ -180,15 +185,19 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
         return [...filtered, newSchoolObj].sort((a, b) => a.name.localeCompare(b.name));
       });
 
-      // 2. SAVE DIRECTLY TO MYSQL XAMPP (Localhost Database)
-      const mysqlOk = await saveSchoolToMysql(newSchoolObj);
-      if (mysqlOk) {
+      // 2. SAVE DIRECTLY TO MYSQL (Localhost / cPanel Database)
+      const saveRes = await saveSchoolToMysqlDetailed(newSchoolObj);
+      if (saveRes.ok) {
         setIsMysqlConnected(true);
+      } else {
+        throw new Error(saveRes.error || "Gagal menyimpan data sekolah ke database server.");
       }
+
+      onSchoolsUpdated?.();
 
       swal.fire({
         title: editingSchool ? "Data Unit Kerja Diperbarui!" : "Sekolah Baru Terdaftar!",
-        text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) berhasil disimpan di Database MySQL XAMPP (tabel \`schools\`)!`,
+        text: `Instansi "${nameTrimmed}" (NPSN: ${npsnTrimmed}) berhasil disimpan di Database MySQL (tabel \`schools\`)!`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -236,12 +245,13 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
       // 1. Delete from local state immediately
       setSchools((prev) => prev.filter((s) => s.id !== pendingDelete.id && s.npsn !== pendingDelete.npsn));
 
-      // 2. Delete from MySQL XAMPP
+      // 2. Delete from MySQL
       await deleteSchoolFromMysql(pendingDelete.id);
+      onSchoolsUpdated?.();
 
       swal.fire({
         title: "Instansi Dihapus!",
-        text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus dari database MySQL XAMPP.`,
+        text: `Sekolah "${pendingDelete.name}" beserta master data pendukungnya berhasil dihapus dari database MySQL.`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -254,6 +264,345 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
     } finally {
       setPendingDelete(null);
     }
+  };
+
+  // Export Master Schools to CSV
+  const handleExportSchoolsToCSV = () => {
+    const headers = [
+      "NPSN",
+      "Nama Sekolah",
+      "Kabupaten / Kota",
+      "Alamat Lengkap",
+      "Nama Kepala Sekolah",
+      "NIP Kepala Sekolah",
+      "Status Kepala Sekolah"
+    ];
+
+    const rows = filteredSchools.map(s => [
+      s.npsn || "",
+      s.name || "",
+      s.city || "",
+      s.address || "",
+      s.principalName || "",
+      s.principalNip || "",
+      (s.principalStatus || "definitif").toUpperCase()
+    ]);
+
+    const csvBody = [
+      headers.map(h => `"${h}"`).join(","),
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `sikapita_master_sekolah_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // Download CSV Import Template for Master Schools
+  const handleDownloadSchoolTemplateCSV = () => {
+    const headers = [
+      "NPSN",
+      "Nama Sekolah",
+      "Kabupaten / Kota",
+      "Alamat Lengkap",
+      "Nama Kepala Sekolah",
+      "NIP Kepala Sekolah",
+      "Status Kepala Sekolah"
+    ];
+
+    const sampleRows = [
+      [
+        "20211512",
+        "SMAN 1 CIAMIS",
+        "KABUPATEN CIAMIS",
+        "Jl. Gunung Galuh No. 37 Ciamis",
+        "Dr. H. SOLIHIN, M.Pd.",
+        "197005121995121001",
+        "DEFINITIF"
+      ],
+      [
+        "20211567",
+        "SMKN 1 KAWALI",
+        "KABUPATEN CIAMIS",
+        "Jl. Talagasari No. 35 Kawali",
+        "Dra. Hj. SITI NURJANAH, M.M.",
+        "197208141998022002",
+        "PLT"
+      ]
+    ];
+
+    const csvBody = [
+      headers.map(h => `"${h}"`).join(","),
+      ...sampleRows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\r\n");
+
+    const blob = new Blob(["\uFEFF" + csvBody], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "template_import_sekolah_sikapita.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // RFC-4180 CSV parser supporting comma (,), semicolon (;) from Excel ID, and tab (\t)
+  const parseSchoolCSV = (rawText: string): string[][] => {
+    const text = rawText.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const firstNonEmptyLine = text.split("\n").find(l => l.trim().length > 0) || "";
+    if (!firstNonEmptyLine) return [];
+
+    let commaCount = 0;
+    let semiCount = 0;
+    let tabCount = 0;
+    let inQuoteDetect = false;
+    for (let i = 0; i < firstNonEmptyLine.length; i++) {
+      const ch = firstNonEmptyLine[i];
+      if (ch === '"') inQuoteDetect = !inQuoteDetect;
+      else if (!inQuoteDetect) {
+        if (ch === ',') commaCount++;
+        else if (ch === ';') semiCount++;
+        else if (ch === '\t') tabCount++;
+      }
+    }
+    const delimiter = semiCount > commaCount && semiCount >= tabCount
+      ? ';'
+      : tabCount > commaCount
+        ? '\t'
+        : ',';
+
+    const allRows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentField = "";
+    let insideQuote = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (insideQuote) {
+        if (ch === '"' && next === '"') {
+          currentField += '"';
+          i++;
+        } else if (ch === '"') {
+          insideQuote = false;
+        } else {
+          currentField += ch;
+        }
+      } else {
+        if (ch === '"' && currentField.trim() === "") {
+          insideQuote = true;
+          currentField = "";
+        } else if (ch === delimiter) {
+          currentRow.push(currentField.trim());
+          currentField = "";
+        } else if (ch === '\n') {
+          currentRow.push(currentField.trim());
+          if (currentRow.some(cell => cell.length > 0)) {
+            allRows.push(currentRow);
+          }
+          currentRow = [];
+          currentField = "";
+        } else {
+          currentField += ch;
+        }
+      }
+    }
+
+    currentRow.push(currentField.trim());
+    if (currentRow.some(cell => cell.length > 0)) {
+      allRows.push(currentRow);
+    }
+
+    if (allRows.length === 0) return [];
+
+    const firstCol = (allRows[0][0] || "").toLowerCase();
+    const secondCol = (allRows[0][1] || "").toLowerCase();
+    const looksLikeHeader =
+      firstCol.includes("npsn") ||
+      secondCol.includes("sekolah") ||
+      secondCol.includes("nama") ||
+      firstCol === "no";
+
+    return looksLikeHeader ? allRows.slice(1) : allRows;
+  };
+
+  // Bulk Import Schools from CSV
+  const handleImportSchoolsCSV = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const inputEl = event.target;
+    const file = inputEl.files?.[0];
+    if (!file) return;
+
+    inputEl.value = "";
+
+    if (file.size > 5 * 1024 * 1024) {
+      swal.fire({
+        title: "File Terlalu Besar!",
+        text: "Ukuran maksimal file CSV adalah 5MB.",
+        icon: "warning"
+      });
+      return;
+    }
+
+    setIsImportingProcessing(true);
+    setImportProgress(null);
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      setIsImportingProcessing(false);
+      setImportProgress(null);
+      swal.fire({
+        title: "Gagal Membaca File!",
+        text: "Browser gagal membaca file CSV yang dipilih. Pastikan file tidak rusak atau terkunci.",
+        icon: "error"
+      });
+    };
+
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      if (!text) {
+        setIsImportingProcessing(false);
+        return;
+      }
+
+      try {
+        const rows = parseSchoolCSV(text);
+        if (rows.length === 0) {
+          swal.fire({
+            title: "File Kosong / Format Tidak Dikenali!",
+            text: "Tidak ada baris data sekolah yang terbaca dari file CSV tersebut. Pastikan menggunakan template CSV dengan kolom NPSN dan Nama Sekolah.",
+            icon: "warning"
+          });
+          return;
+        }
+
+        let importCount = 0;
+        let skippedCount = 0;
+        let failCount = 0;
+        const skipReasons: string[] = [];
+        const errorReasons: string[] = [];
+
+        setImportProgress({ current: 0, total: rows.length });
+
+        for (let idx = 0; idx < rows.length; idx++) {
+          const row = rows[idx];
+          setImportProgress({ current: idx + 1, total: rows.length });
+
+          const npsn = (row[0] || "").trim().replace(/^'+/, "").replace(/\s+/g, "");
+          const name = (row[1] || "").trim().toUpperCase();
+
+          if (/e\+/i.test(npsn)) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2}: NPSN terbaca notasi ilmiah (${npsn}). Format kolom NPSN sebagai Text.`);
+            continue;
+          }
+
+          if (!/^\d{4,12}$/.test(npsn)) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2}: NPSN tidak valid (${npsn || "kosong"}, harus 4-12 digit angka)`);
+            continue;
+          }
+
+          if (!name) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2} (NPSN ${npsn}): Nama Sekolah kosong`);
+            continue;
+          }
+
+          const city = (row[2] || "").trim().toUpperCase();
+          const address = (row[3] || "").trim();
+          const principalName = (row[4] || "").trim();
+          const principalNip = (row[5] || "").trim().replace(/^'+/, "").replace(/\s+/g, "");
+
+          if (principalNip && /e\+/i.test(principalNip)) {
+            skippedCount++;
+            if (skipReasons.length < 3) skipReasons.push(`Baris ${idx + 2} (${name}): NIP Kepala Sekolah terbaca notasi ilmiah (${principalNip}).`);
+            continue;
+          }
+
+          const rawStatus = (row[6] || "").trim().toLowerCase();
+          const principalStatus: "definitif" | "plt" | "plh" =
+            rawStatus.includes("plt")
+              ? "plt"
+              : rawStatus.includes("plh")
+              ? "plh"
+              : "definitif";
+
+          const existingSchool = schools.find((s) => s.npsn === npsn);
+          const schoolId = existingSchool?.id || npsn;
+
+          const schoolObj: School = {
+            id: schoolId,
+            npsn,
+            name,
+            city,
+            address,
+            principalName,
+            principalNip,
+            principalStatus
+          };
+
+          const saveResult = await saveSchoolToMysqlDetailed(schoolObj);
+          if (saveResult.ok) {
+            importCount++;
+          } else {
+            failCount++;
+            if (errorReasons.length < 3) {
+              errorReasons.push(`${name}: ${saveResult.error || "Gagal menyimpan ke server"}`);
+            }
+          }
+        }
+
+        await loadSchoolsFromDb();
+        onSchoolsUpdated?.();
+
+        if (importCount > 0 && failCount === 0) {
+          setIsMysqlConnected(true);
+          swal.fire({
+            title: "Impor Sekolah Berhasil!",
+            text: `Berhasil mengimpor ${importCount} master data sekolah ke database MySQL.${skippedCount > 0 ? ` (${skippedCount} baris dilewati: ${skipReasons.join("; ")})` : ""}`,
+            icon: "success",
+            confirmButtonText: "Selesai"
+          });
+          setIsImportingSchools(false);
+        } else if (importCount > 0 && failCount > 0) {
+          swal.fire({
+            title: "Impor Sebagian Berhasil",
+            text: `${importCount} data sekolah berhasil disimpan, namun ${failCount} data gagal disimpan (${errorReasons.join(" | ")}).${skippedCount > 0 ? ` ${skippedCount} baris dilewati.` : ""}`,
+            icon: "warning",
+            confirmButtonText: "Mengerti"
+          });
+        } else {
+          const detailParts = [
+            failCount > 0 ? `${failCount} gagal disimpan ke server (${errorReasons.join(" | ")})` : "",
+            skippedCount > 0 ? `${skippedCount} baris dilewati (${skipReasons.join(" | ")})` : ""
+          ].filter(Boolean);
+          swal.fire({
+            title: "Impor Sekolah Gagal!",
+            text: `Tidak ada data sekolah yang berhasil disimpan ke database. ${detailParts.join(". ")}`,
+            icon: "error",
+            confirmButtonText: "Tutup"
+          });
+        }
+      } catch (err: any) {
+        swal.fire({
+          title: "Impor Gagal!",
+          text: "Terjadi kesalahan saat memproses CSV sekolah: " + (err.message || String(err)),
+          icon: "error"
+        });
+      } finally {
+        setIsImportingProcessing(false);
+        setImportProgress(null);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const filteredSchools = schools.filter((s) => {
@@ -335,28 +684,122 @@ export default function SchoolManagementTab({ userRole, userSchool }: SchoolMana
           </button>
 
           {!isSchoolAdmin && (userRole === "super_admin" || userRole === "admin") && (
-            <button
-              onClick={() => {
-                setEditingSchool(null);
-                setForm({
-                  npsn: "",
-                  name: "",
-                  address: "",
-                  city: "",
-                  principalName: "",
-                  principalNip: "",
-                  principalStatus: "definitif"
-                });
-                setIsAddingSchool(!isAddingSchool);
-                setErrorMsg("");
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
-            >
-              <Plus className="w-4 h-4" /> TAMBAH SEKOLAH MASTER
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingSchool(null);
+                  setForm({
+                    npsn: "",
+                    name: "",
+                    address: "",
+                    city: "",
+                    principalName: "",
+                    principalNip: "",
+                    principalStatus: "definitif"
+                  });
+                  setIsAddingSchool(!isAddingSchool);
+                  setIsImportingSchools(false);
+                  setErrorMsg("");
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
+              >
+                <Plus className="w-4 h-4" /> TAMBAH SEKOLAH MASTER
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportingSchools(!isImportingSchools);
+                  setIsAddingSchool(false);
+                  setErrorMsg("");
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
+              >
+                <Upload className="w-4 h-4" /> IMPORT SEKOLAH (.CSV)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportSchoolsToCSV}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm select-none"
+              >
+                <Download className="w-4 h-4" /> EKSPORT (.CSV)
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {/* Collapsible Import Master Sekolah CSV Panel */}
+      {isImportingSchools && !isSchoolAdmin && (
+        <div className="bg-white border-2 border-emerald-500 p-6 rounded-2xl shadow-md space-y-4 animate-slideDown text-slate-800">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Upload className="w-5 h-5 text-emerald-600" />
+              <h3 className="text-sm font-black text-slate-900 uppercase">Impor Massal Master Data Sekolah (.CSV)</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsImportingSchools(false)}
+              className="text-xs text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+            >
+              Batal
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            <div className="space-y-2.5">
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                Unggah file Excel/CSV berisi daftar sekolah untuk mempercepat pengisian Master Data (mendukung pemisah koma <code className="px-1 bg-slate-100 rounded">,</code> atau titik koma <code className="px-1 bg-slate-100 rounded">;</code> dari Excel Indonesia).
+                Pastikan kolom <strong>NPSN</strong> dan <strong>NIP Kepala Sekolah</strong> diformat sebagai <strong>Text</strong> agar tidak berubah menjadi format ilmiah Excel.
+              </p>
+              <div className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5 font-mono">
+                Kolom: NPSN | Nama Sekolah | Kab/Kota | Alamat | Nama Kepsek | NIP Kepsek | Status (DEFINITIF/PLT/PLH)
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDownloadSchoolTemplateCSV}
+                  disabled={isImportingProcessing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-lg border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5 text-teal-600" /> Download Template CSV Sekolah
+                </button>
+              </div>
+            </div>
+
+            <div className="border border-dashed border-emerald-300 bg-emerald-50/20 p-6 rounded-xl text-center space-y-3 relative hover:bg-emerald-50/50 transition-colors">
+              {isImportingProcessing ? (
+                <>
+                  <RefreshCw className="w-8 h-8 text-emerald-600 mx-auto animate-spin" />
+                  <div>
+                    <span className="text-xs font-bold text-emerald-700 block">
+                      Sedang Mengimpor Master Sekolah{importProgress ? ` (${importProgress.current}/${importProgress.total})` : "..."}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Mohon tunggu hingga proses sinkronisasi MySQL selesai</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-emerald-500 mx-auto animate-bounce" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 block">Pilih File CSV Master Sekolah</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Maksimal ukuran 5MB (.csv)</span>
+                  </div>
+                </>
+              )}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                disabled={isImportingProcessing}
+                onChange={handleImportSchoolsCSV}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {isAddingSchool && (
         <form onSubmit={handleCreateOrUpdateSchool} className="bg-white border-2 border-teal-500 p-6 rounded-2xl shadow-md space-y-4 animate-slideDown text-slate-800">

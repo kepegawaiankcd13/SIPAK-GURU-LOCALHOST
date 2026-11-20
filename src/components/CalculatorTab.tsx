@@ -62,7 +62,7 @@ export default function CalculatorTab() {
           <Calculator className="w-5 h-5 text-teal-600" /> Simulasi & Proyeksi Kenaikan Pangkat (Permenpan RB 1/2023)
         </h3>
         <p className="text-xs text-slate-500 leading-normal max-w-3xl">
-          Simulasikan estimasi perolehan Angka Kredit Anda berdasarkan tingkat jabatan dan predikat kinerja tahunan. Berdasarkan regulasi dari Perka BKN No. 3 Tahun 2023, perhitungan angka kredit fungsional dialihkan sepenuhnya berbentuk konversi SKP, meniadakan berkas PKG terpisah maupun rincian portofolio dupak lama.
+          Simulasikan estimasi perolehan Angka Kredit bagi Jabatan Fungsional <strong>Guru maupun Pengawas Sekolah</strong> berdasarkan jenjang jabatan dan predikat kinerja tahunan. Berdasarkan regulasi PermenPAN RB No. 1/2023 & Perka BKN No. 3/2023, perhitungan angka kredit fungsional dialihkan sepenuhnya melalui konversi predikat E-SKP.
         </p>
       </div>
 
@@ -145,7 +145,7 @@ export default function CalculatorTab() {
                 className="rounded text-teal-600 focus:ring-teal-500 w-4 h-4 mt-0.5 border-slate-300 accent-teal-600"
               />
               <span className="text-xs font-medium leading-tight">
-                Memiliki Ijazah S2/S3 baru yang linier dengan posisi mengajar? (+25% bonus kebutuhan AK)
+                Memiliki Ijazah S2/S3 baru yang linier dengan jabatan fungsional? (+25% bonus kebutuhan AK)
               </span>
             </label>
           </div>
@@ -153,7 +153,7 @@ export default function CalculatorTab() {
           <div className="p-3 bg-teal-50/60 rounded border border-teal-100 flex gap-2">
             <Info className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
             <p className="text-[11px] text-teal-800 leading-normal">
-              Penetapan didasarkan atas koefisien standard nasional bagi guru kelas maupun guru bidang studi sesuai ketetapan BKN.
+              Penetapan didasarkan atas koefisien standar nasional (12.5 / 25 / 37.5 / 50) bagi Jabatan Fungsional Guru maupun Pengawas Sekolah sesuai ketetapan BKN.
             </p>
           </div>
         </div>

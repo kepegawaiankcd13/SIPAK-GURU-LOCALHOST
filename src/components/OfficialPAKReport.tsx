@@ -370,15 +370,16 @@ export default function OfficialPAKReport({
         pdf.addImage(imgData, 'JPEG', 0, 0, 215, 330, undefined, 'FAST');
       }
 
-      const cleanName = (profile.name || 'Guru').replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanName = (profile.name || 'Pegawai').replace(/[^a-zA-Z0-9]/g, '_');
       const cleanNip = (profile.nip || '').replace(/[^0-9]/g, '');
-      const fileName = `PAK_${cleanName}_NIP_${cleanNip || 'Guru_PNS'}.pdf`;
+      const roleShort = profile.jabatanFungsional === 'Pengawas Sekolah' ? 'Pengawas' : 'Guru';
+      const fileName = `PAK_${cleanName}_NIP_${cleanNip || `${roleShort}_PNS`}.pdf`;
 
       pdf.save(fileName);
 
       swal.fire({
         title: "Dokumen PDF Berhasil Diunduh!",
-        text: `Berkas PAK resmi F4/Folio (3 Halaman Pas) milik Guru PNS "${profile.name}" berhasil diunduh dengan tata letak yang rapi dan tulisan yang jelas.`,
+        text: `Berkas PAK resmi F4/Folio (3 Halaman Pas) milik ${profile.jabatanFungsional || 'Guru'} PNS "${profile.name}" berhasil diunduh dengan tata letak yang rapi dan tulisan yang jelas.`,
         icon: "success",
         confirmButtonText: "Selesai"
       });
@@ -452,6 +453,7 @@ export default function OfficialPAKReport({
     const ov = targetEval.overrideData;
     return {
       ...rawProfile,
+      ...(ov.jabatanFungsional ? { jabatanFungsional: ov.jabatanFungsional } : {}),
       ...(ov.currentGolongan ? { currentGolongan: ov.currentGolongan } : {}),
       ...(ov.tmtCurrentPangkat ? { tmtCurrentPangkat: ov.tmtCurrentPangkat } : {}),
       ...(ov.tmtCurrentJabatan ? { tmtCurrentJabatan: ov.tmtCurrentJabatan } : {}),
@@ -582,24 +584,26 @@ export default function OfficialPAKReport({
     ? (kekuranganPangkat <= 0 && kekuranganJenjang <= 0) 
     : (kekuranganPangkat <= 0);
 
+  const jfLabel = (profile.jabatanFungsional || 'Guru').toUpperCase();
+
   const recommendationText = useMemo(() => {
     const tgtLevel = getTeacherLevel(profile.targetGolongan);
     const targetPangkatName = targetDetail.pangkat.replace(/\(s1\)/i, '').trim().toUpperCase();
     
     if (isLolosPangkat) {
       if (isJenjangChange) {
-        return `DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN JENJANG JABATAN SETINGKAT LEBIH TINGGI MENJADI GURU ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
+        return `DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN JENJANG JABATAN SETINGKAT LEBIH TINGGI MENJADI ${jfLabel} ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
       } else {
-        return `DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN PANGKAT SETINGKAT LEBIH TINGGI MENJADI PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
+        return `DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN PANGKAT SETINGKAT LEBIH TINGGI MENJADI ${jfLabel} ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
       }
     } else {
       if (isJenjangChange) {
-        return `TIDAK DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN JENJANG JABATAN SETINGKAT LEBIH TINGGI MENJADI GURU ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
+        return `TIDAK DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN JENJANG JABATAN SETINGKAT LEBIH TINGGI MENJADI ${jfLabel} ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
       } else {
-        return `TIDAK DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN PANGKAT SETINGKAT LEBIH TINGGI MENJADI PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
+        return `TIDAK DAPAT DIPERTIMBANGKAN UNTUK KENAIKAN PANGKAT SETINGKAT LEBIH TINGGI MENJADI ${jfLabel} ${tgtLevel.toUpperCase()} PANGKAT/GOLONGAN RUANG ${targetPangkatName} (${profile.targetGolongan}).`;
       }
     }
-  }, [isLolosPangkat, isJenjangChange, profile.targetGolongan, targetDetail]);
+  }, [isLolosPangkat, isJenjangChange, profile.targetGolongan, targetDetail, jfLabel]);
   
   const formattedPeriode = useMemo(() => {
     if (!latestEval) {
@@ -790,7 +794,7 @@ export default function OfficialPAKReport({
           <tr className="border-b border-black">
             <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">7</td>
             <td className="py-1 print:py-0.5 px-2.5 border-r border-black font-semibold align-middle">JABATAN/TMT</td>
-            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> GURU {getTeacherLevel(profile.currentGolongan).toUpperCase()} / {profile.tmtCurrentJabatan || "24-08-2023"}</td>
+            <td className="py-1 print:py-0.5 px-2.5 text-[11px] print:text-[9.5px] align-middle"> {jfLabel} {getTeacherLevel(profile.currentGolongan).toUpperCase()} / {profile.tmtCurrentJabatan || "24-08-2023"}</td>
           </tr>
           <tr className="border-b border-black">
             <td className="py-1 print:py-0.5 px-2.5 text-center border-r border-black font-semibold align-middle">8</td>
@@ -1020,6 +1024,18 @@ export default function OfficialPAKReport({
               />
             </div>
 
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-0.5">JENIS JABATAN FUNGSIONAL</label>
+              <select
+                value={rawProfile.jabatanFungsional || 'Guru'}
+                onChange={e => handleMetaChange('jabatanFungsional', e.target.value)}
+                className="w-full text-xs bg-white border border-slate-300 rounded p-1.5 focus:outline-teal-500 font-bold text-slate-800"
+              >
+                <option value="Guru">Guru</option>
+                <option value="Pengawas Sekolah">Pengawas Sekolah</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 mb-0.5">TMT GOLONGAN TERAKHIR</label>
@@ -1033,7 +1049,7 @@ export default function OfficialPAKReport({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">TMT JABATAN FUNGSIONAL Guru</label>
+                <label className="block text-[10px] font-bold text-slate-500 mb-0.5">TMT JABATAN FUNGSIONAL</label>
                 <input
                   type="text"
                   value={profile.tmtCurrentJabatan || ''}
