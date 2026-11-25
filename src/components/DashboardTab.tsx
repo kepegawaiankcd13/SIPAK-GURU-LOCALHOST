@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   TeacherProfile, 
   SKPEvaluation, 
@@ -20,6 +20,7 @@ import {
   subtractAK,
   isAKGreaterOrEqual
 } from '../lib/akUtils';
+import SearchableSchoolSelect from './SearchableSchoolSelect';
 import { 
   Award, 
   BookOpen, 
@@ -40,12 +41,23 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+interface SchoolMasterOption {
+  id: string;
+  name: string;
+  npsn: string;
+  principalName?: string;
+  principalNip?: string;
+  principalStatus?: 'definitif' | 'plt' | 'plh';
+}
+
 interface DashboardTabProps {
   profile: TeacherProfile;
   setProfile: (profile: TeacherProfile) => void;
   evaluations: SKPEvaluation[];
   golonganDetail: GolonganDetail;
   targetGolonganDetail: GolonganDetail;
+  schoolsList?: SchoolMasterOption[];
+  userRole?: 'super_admin' | 'school_admin';
 }
 
 export default function DashboardTab({
@@ -53,10 +65,17 @@ export default function DashboardTab({
   setProfile,
   evaluations,
   golonganDetail,
-  targetGolonganDetail
+  targetGolonganDetail,
+  schoolsList = [],
+  userRole = 'super_admin'
 }: DashboardTabProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<TeacherProfile>({ ...profile });
+
+  useEffect(() => {
+    setEditForm({ ...profile });
+    setIsEditing(false);
+  }, [profile]);
 
   // Current cumulative AK = PAK Integrasi 2022 (input manual) + Hasil Konversi E-SKP + Pendidikan (jika ada)
   const totalSKPAC = sumAK(...evaluations.map(item => roundAK(item.creditEarned)));
@@ -91,6 +110,9 @@ export default function DashboardTab({
     e.preventDefault();
     setProfile({
       ...editForm,
+      name: (editForm.name || '').toUpperCase().trim(),
+      nip: (editForm.nip || '').replace(/\s+/g, '').trim(),
+      school: (editForm.school || '').toUpperCase().trim(),
       baseAK: roundAK(parseAKNumber(editForm.baseAK)),
       akIntegrasi2022: roundAK(parseAKNumber(editForm.akIntegrasi2022)),
       akPendidikan: roundAK(parseAKNumber(editForm.akPendidikan))
@@ -188,13 +210,85 @@ export default function DashboardTab({
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">UNIT KERJA / SEKOLAH</label>
-              <input
-                type="text"
-                value={editForm.school}
-                onChange={e => setEditForm({ ...editForm, school: e.target.value })}
-                className="w-full text-sm bg-white border border-slate-300 rounded px-2.5 py-1.5 focus:outline-teal-500"
-              />
+              <label className="block text-xs font-bold text-slate-600 mb-1">
+                {editForm.jabatanFungsional === 'Pengawas Sekolah' ? 'UNIT KERJA / KCD / SEKOLAH' : 'UNIT KERJA / SEKOLAH'}
+              </label>
+              {(() => {
+                const baseOptions = schoolsList.map(s => ({
+                  id: s.id,
+                  name: s.name,
+                  npsn: s.npsn || s.id
+                }));
+                const isPengawas = editForm.jabatanFungsional === 'Pengawas Sekolah';
+                const hasKcd = baseOptions.some(
+                  o => o.name.trim().toUpperCase() === 'CABANG DINAS PENDIDIKAN WILAYAH XIII'
+                );
+                const selectOptions = isPengawas && !hasKcd
+                  ? [
+                      {
+                        id: 'CABANG DINAS PENDIDIKAN WILAYAH XIII',
+                        name: 'CABANG DINAS PENDIDIKAN WILAYAH XIII',
+                        npsn: 'KCD-XIII'
+                      },
+                      ...baseOptions
+                    ]
+                  : baseOptions;
+
+                return (
+                  <>
+                    <SearchableSchoolSelect
+                      value={editForm.school || ''}
+                      disabled={userRole === 'school_admin'}
+                      allowAll={false}
+                      allowCustom={isPengawas}
+                      compact={true}
+                      placeholder="-- Pilih Sekolah / Unit Kerja --"
+                      options={selectOptions}
+                      onChange={selectedName => {
+                        const newSchoolUpper = selectedName.trim().toUpperCase();
+                        const oldSchoolUpper = (editForm.school || '').trim().toUpperCase();
+                        const matchedSchool = schoolsList.find(
+                          s => s.name.trim().toUpperCase() === newSchoolUpper
+                        );
+
+                        setEditForm(prev => {
+                          const next: TeacherProfile = {
+                            ...prev,
+                            school: newSchoolUpper
+                          };
+                          if (matchedSchool && newSchoolUpper !== oldSchoolUpper) {
+                            const oldUnitUpper = (prev.unitKerja || '').trim().toUpperCase();
+                            if (!oldUnitUpper || (oldSchoolUpper && oldUnitUpper.includes(oldSchoolUpper))) {
+                              next.unitKerja = `${newSchoolUpper} KABUPATEN CIAMIS CABANG PENDIDIKAN WILAYAH XIII`;
+                            }
+                            const oldInstansiUpper = (prev.pejabatPenilaiInstansi || '').trim().toUpperCase();
+                            if (!oldInstansiUpper || (oldSchoolUpper && oldInstansiUpper === oldSchoolUpper)) {
+                              next.pejabatPenilaiInstansi = newSchoolUpper;
+                              next.pejabatPenilaiTitle = 'KEPALA SEKOLAH';
+                              if (matchedSchool.principalName) {
+                                next.pejabatPenilaiNama = matchedSchool.principalName;
+                                next.pejabatPenilaiNip = matchedSchool.principalNip || '';
+                                next.pejabatPenilaiStatus = matchedSchool.principalStatus || 'definitif';
+                              }
+                            }
+                          }
+                          return next;
+                        });
+                      }}
+                    />
+                    {userRole === 'school_admin' && (
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        *Perpindahan unit kerja sekolah hanya dapat dilakukan oleh Super Admin KCD.
+                      </p>
+                    )}
+                    {userRole === 'super_admin' && !isPengawas && schoolsList.length === 0 && (
+                      <p className="text-[10px] text-rose-600 mt-1">
+                        Master Data Sekolah kosong. Daftarkan sekolah di menu Master Data Sekolah terlebih dahulu.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">JABATAN FUNGSIONAL</label>

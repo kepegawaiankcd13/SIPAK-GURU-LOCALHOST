@@ -3949,6 +3949,8 @@ export default function App() {
                     evaluations={evaluations}
                     golonganDetail={golonganDetail}
                     targetGolonganDetail={targetGolonganDetail}
+                    schoolsList={schoolsList}
+                    userRole={user.role}
                   />
                 )}
                 
